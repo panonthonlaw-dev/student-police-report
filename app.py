@@ -72,16 +72,20 @@ if st.session_state.current_user:
     else:
         st.session_state.last_activity = get_now_th()
 
-# --- 4. ฟังก์ชัน PDF ---
+# --- 4. ฟังก์ชัน PDF (แก้ไข Error Horizontal Space) ---
 def create_pdf(row_data):
     try:
-        # ตรวจสอบไฟล์ฟอนต์ก่อนเริ่ม
+        # เช็คไฟล์ฟอนต์ก่อน
         if not os.path.exists(FONT_FILE):
-            return f"MISSING_FONT: ไม่พบไฟล์ {FONT_FILE} กรุณาอัปโหลดลง GitHub"
+            return f"MISSING_FONT: ไม่พบไฟล์ {FONT_FILE}"
 
         pdf = FPDF()
+        # ตั้งค่า Margin ขวา 15 ซ้าย 15
         pdf.set_margins(15, 15, 15)
         pdf.add_page()
+        
+        # คำนวณความกว้างหน้ากระดาษที่ใช้ได้จริง (A4 width - margins)
+        page_width = pdf.w - 2 * pdf.l_margin
         
         pdf.add_font('ThaiFont', '', FONT_FILE)
         
@@ -93,33 +97,45 @@ def create_pdf(row_data):
         pdf.ln(5); pdf.line(15, pdf.get_y(), 195, pdf.get_y()); pdf.ln(8)
         
         pdf.set_font('ThaiFont', '', 14)
-        pdf.cell(90, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}")
-        pdf.cell(90, 8, txt=f"วันที่แจ้งเหตุ: {clean_val(row_data.get('Timestamp'))}", align='R', ln=True)
+        
+        # ใช้ page_width แทน 0 เพื่อป้องกัน Error
+        col1_w = page_width * 0.6
+        col2_w = page_width * 0.4
+        
+        pdf.cell(col1_w, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}")
+        pdf.cell(col2_w, 8, txt=f"วันที่แจ้งเหตุ: {clean_val(row_data.get('Timestamp'))}", align='R', ln=True)
         pdf.ln(5)
-        pdf.multi_cell(0, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}")
-        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {clean_val(row_data.get('Details'))}")
+        
+        pdf.multi_cell(page_width, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}")
+        pdf.multi_cell(page_width, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {clean_val(row_data.get('Details'))}")
         
         pdf.ln(5); pdf.set_font('ThaiFont', '', 15); pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
-        pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
+        pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(page_width, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
         pdf.ln(10); pdf.set_font('ThaiFont', '', 14)
-        # ส่วนลงชื่อ 5 ฝ่าย
-        pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
-        pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
-        pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C')
-        pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Accused'))} )", ln=True, align='C')
-        pdf.cell(90, 8, txt="ผู้เสียหาย", align='C')
-        pdf.cell(90, 8, txt="ผู้ถูกกล่าวหา", ln=True, align='C')
+        
+        # คำนวณความกว้างคอลัมน์เซ็นชื่อให้พอดี
+        sig_w = page_width / 2
+        
+        # Row 1
+        pdf.cell(sig_w, 8, txt="ลงชื่อ..........................................................", align='C')
+        pdf.cell(sig_w, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
+        pdf.cell(sig_w, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C')
+        pdf.cell(sig_w, 8, txt=f"( {clean_val(row_data.get('Accused'))} )", ln=True, align='C')
+        pdf.cell(sig_w, 8, txt="ผู้เสียหาย", align='C')
+        pdf.cell(sig_w, 8, txt="ผู้ถูกกล่าวหา", ln=True, align='C')
         pdf.ln(5)
         
-        pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
-        pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
-        pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C')
-        pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Witness'))} )", ln=True, align='C')
-        pdf.cell(90, 8, txt="ตำรวจนักเรียนผู้สอบสวน", align='C')
-        pdf.cell(90, 8, txt="พยาน", ln=True, align='C')
+        # Row 2
+        pdf.cell(sig_w, 8, txt="ลงชื่อ..........................................................", align='C')
+        pdf.cell(sig_w, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
+        pdf.cell(sig_w, 8, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C')
+        pdf.cell(sig_w, 8, txt=f"( {clean_val(row_data.get('Witness'))} )", ln=True, align='C')
+        pdf.cell(sig_w, 8, txt="ตำรวจนักเรียนผู้สอบสวน", align='C')
+        pdf.cell(sig_w, 8, txt="พยาน", ln=True, align='C')
         pdf.ln(5)
         
+        # Row 3
         pdf.cell(0, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(0, 8, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", ln=True, align='C')
         pdf.cell(0, 8, txt="ครูผู้สอบสวน / หัวหน้างานปกครอง", ln=True, align='C')
@@ -127,6 +143,7 @@ def create_pdf(row_data):
         pdf.set_y(-20); pdf.set_font('ThaiFont', '', 10)
         printer = st.session_state.current_user['name'] if st.session_state.current_user else "System"
         pdf.cell(0, 5, txt=f"พิมพ์โดย: {printer} | {get_now_th().strftime('%d/%m/%Y %H:%M:%S')}", align='R')
+        
         return pdf.output()
     except Exception as e: return f"ERROR: {str(e)}"
 
@@ -150,7 +167,7 @@ def officer_dashboard():
 
         # --- LIST MODE ---
         if st.session_state.view_mode == "list":
-            st.info("💡 คลิกปุ่มเลขที่รับแจ้ง เพื่อจัดการเคส")
+            st.info("💡 **คลิกที่ปุ่มเลขที่รับแจ้ง** เพื่อเข้าไปดูรายละเอียด, แก้ไข, หรือพิมพ์ PDF")
             
             c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
             c1.markdown("**เลขที่รับแจ้ง (คลิก)**")
@@ -170,7 +187,13 @@ def officer_dashboard():
                 
                 with cc1:
                     btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
-                    st.button(btn_label, key=f"btn_{index}", use_container_width=True, on_click=view_case, args=(real_rid,))
+                    st.button(
+                        btn_label, 
+                        key=f"btn_{index}", 
+                        use_container_width=True,
+                        on_click=view_case, 
+                        args=(real_rid,)
+                    )
                 
                 with cc2: st.write(row.get('Timestamp', '-'))
                 with cc3: st.write(row.get('Incident_Type', '-'))
@@ -212,8 +235,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
                     
+                    st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -229,10 +252,10 @@ def officer_dashboard():
                     
                     v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin)
 
-                    # ปุ่มบันทึกข้อมูล (Admin Only)
+                    # ปุ่มบันทึก (Admin)
                     if is_admin:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
-                        if st.button("💾 บันทึกข้อมูล", use_container_width=True, disabled=not is_complete):
+                        if st.button("💾 บันทึกข้อมูล", type="secondary", use_container_width=True, disabled=not is_complete):
                             df.at[idx, 'Victim'] = v_vic; df.at[idx, 'Accused'] = v_acc
                             df.at[idx, 'Witness'] = v_wit; df.at[idx, 'Teacher_Investigator'] = v_tea
                             df.at[idx, 'Student_Police_Investigator'] = v_stu; df.at[idx, 'Status'] = v_sta
@@ -242,8 +265,9 @@ def officer_dashboard():
                             time.sleep(1.5); st.rerun()
                         if not is_complete: st.caption("⚠️ กรอกข้อมูล (*) ให้ครบเพื่อบันทึก")
 
-                    # --- ปุ่มพิมพ์ PDF (อยู่ล่างสุดตามคำขอ) ---
+                    # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงตลอดเวลา อยู่ล่างสุด) ---
                     st.markdown("---")
+                    st.write("#### 📄 เอกสาร")
                     
                     has_stmt = clean_val(row.get('Statement')) != ""
                     
@@ -266,7 +290,7 @@ def officer_dashboard():
                     # ถ้าสร้างไม่สำเร็จ (เป็น String Error) -> แสดงแจ้งเตือน
                     else:
                         st.error(f"❌ ไม่สามารถสร้างปุ่มพิมพ์ PDF ได้: {pdf_data}")
-                        st.info("คำแนะนำ: กรุณาตรวจสอบว่ามีไฟล์ 'THSarabunNew.ttf' อยู่ใน GitHub หรือไม่")
+                        st.info("คำแนะนำ: กรุณาตรวจสอบว่ามีไฟล์ 'THSarabunNew.ttf' อยู่ในหน้าแรกของ GitHub แล้ว")
 
             else:
                 st.error("ไม่พบข้อมูล"); st.button("กลับ", on_click=back_to_list)
