@@ -71,7 +71,7 @@ def officer_dashboard():
             st.rerun()
 
     try:
-        df = conn.read()
+        df = conn.read(ttl=0)
         if df.empty:
             st.info("ยังไม่มีข้อมูลการแจ้งเหตุ")
             return
