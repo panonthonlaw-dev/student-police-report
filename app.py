@@ -6,6 +6,7 @@ import pytz
 import random
 import os
 import base64
+import time # เพิ่ม time สำหรับหน่วงเวลาแจ้งเตือน
 from fpdf import FPDF
 from PIL import Image
 import io
@@ -17,18 +18,14 @@ LOGO_FILE = "school_logo.png"
 FONT_FILE = "THSarabunNew.ttf"
 
 def get_now_th():
-    """ดึงเวลาปัจจุบันของประเทศไทย"""
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
-# ป้องกัน AttributeError โดยประกาศ Session State เริ่มต้น
-if 'current_user' not in st.session_state:
-    st.session_state.current_user = None
-if 'submitted_id' not in st.session_state:
-    st.session_state.submitted_id = None
-if 'last_activity' not in st.session_state:
-    st.session_state.last_activity = get_now_th()
-if 'selected_case_id' not in st.session_state:
-    st.session_state.selected_case_id = None
+# ประกาศ Session State
+if 'current_user' not in st.session_state: st.session_state.current_user = None
+if 'submitted_id' not in st.session_state: st.session_state.submitted_id = None
+if 'last_activity' not in st.session_state: st.session_state.last_activity = get_now_th()
+if 'view_mode' not in st.session_state: st.session_state.view_mode = "list" # list = ตาราง, detail = หน้าสอบสวน
+if 'selected_case_id' not in st.session_state: st.session_state.selected_case_id = None
 
 st.markdown("""
     <style>
@@ -36,15 +33,15 @@ st.markdown("""
     .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
     .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
+    /* ปรับแต่งปุ่มบันทึกให้ชัดเจนเมื่อ Disabled */
+    button:disabled { cursor: not-allowed; opacity: 0.6; }
     </style>
 """, unsafe_allow_html=True)
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_val(val):
-    """ฟังก์ชันลบคำว่า nan ออกจากช่องกรอกข้อมูล"""
-    if pd.isna(val) or str(val).lower() == "nan" or str(val) == "":
-        return ""
+    if pd.isna(val) or str(val).lower() == "nan" or str(val) == "": return ""
     return str(val)
 
 # --- 🔑 2. ข้อมูลบัญชีและระบบสิทธิ์ ---
@@ -63,11 +60,12 @@ if st.session_state.current_user:
     elapsed = (get_now_th() - st.session_state.last_activity).total_seconds()
     if elapsed > 1800: # 30 นาที
         st.session_state.current_user = None
+        st.session_state.view_mode = "list"
         st.rerun()
     else:
         st.session_state.last_activity = get_now_th()
 
-# --- 📄 3. ฟังก์ชันสร้าง PDF (แบบทางการพร้อมช่องลงชื่อ 5 ฝ่าย + Footer) ---
+# --- 📄 3. ฟังก์ชันสร้าง PDF (คงเดิม) ---
 def create_pdf(row_data):
     try:
         pdf = FPDF()
@@ -75,9 +73,7 @@ def create_pdf(row_data):
         pdf.add_page()
         if not os.path.exists(FONT_FILE): return "MISSING_FONT"
         pdf.add_font('ThaiFont', '', FONT_FILE)
-        
-        if os.path.exists(LOGO_FILE):
-            pdf.image(LOGO_FILE, x=15, y=12, w=18)
+        if os.path.exists(LOGO_FILE): pdf.image(LOGO_FILE, x=15, y=12, w=18)
         
         pdf.set_y(15); pdf.set_font('ThaiFont', '', 20)
         pdf.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='C')
@@ -89,16 +85,14 @@ def create_pdf(row_data):
         pdf.cell(90, 8, txt=f"วันที่แจ้งเหตุ: {row_data.get('Timestamp', '-')}", align='R', ln=True)
         pdf.ln(5)
         pdf.multi_cell(0, 8, txt=f"ประเภทเหตุ: {row_data.get('Incident_Type', '-')} | สถานที่: {row_data.get('Location', '-')}")
-        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์: {row_data.get('Details', '-')}")
+        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {row_data.get('Details', '-')}")
         
         pdf.ln(5); pdf.set_font('ThaiFont', '', 15); pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
         pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
-        # --- ✍️ ส่วนลงชื่อ 5 ฝ่าย (จัดแถวละ 2 คน และคนสุดท้ายกึ่งกลาง) ---
-        pdf.ln(10)
-        pdf.set_font('ThaiFont', '', 14)
+        pdf.ln(10); pdf.set_font('ThaiFont', '', 14)
         
-        # แถวที่ 1: ผู้เสียหาย และ ผู้ถูกกล่าวหา
+        # ส่วนลงชื่อ 5 ฝ่าย
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C')
@@ -106,8 +100,7 @@ def create_pdf(row_data):
         pdf.cell(90, 8, txt="ผู้เสียหาย", align='C')
         pdf.cell(90, 8, txt="ผู้ถูกกล่าวหา", ln=True, align='C')
         pdf.ln(5)
-
-        # แถวที่ 2: ตำรวจนักเรียนผู้สอบสวน และ พยาน
+        
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C')
@@ -115,22 +108,18 @@ def create_pdf(row_data):
         pdf.cell(90, 8, txt="ตำรวจนักเรียนผู้สอบสวน", align='C')
         pdf.cell(90, 8, txt="พยาน", ln=True, align='C')
         pdf.ln(5)
-
-        # แถวที่ 3: ครูผู้สอบสวน
+        
         pdf.cell(0, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(0, 8, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", ln=True, align='C')
         pdf.cell(0, 8, txt="ครูผู้สอบสวน / หัวหน้างานปกครอง", ln=True, align='C')
 
-        # --- 🕒 ส่วน Footer มุมขวาล่าง ---
         pdf.set_y(-20); pdf.set_font('ThaiFont', '', 10)
-        now_str = get_now_th().strftime("%d/%m/%Y %H:%M:%S")
         printer = st.session_state.current_user['name'] if st.session_state.current_user else "System"
-        pdf.cell(0, 5, txt=f"พิมพ์โดย: {printer} | วันเวลาที่พิมพ์: {now_str}", align='R')
-        
+        pdf.cell(0, 5, txt=f"พิมพ์โดย: {printer} | {get_now_th().strftime('%d/%m/%Y %H:%M:%S')}", align='R')
         return pdf.output()
     except Exception as e: return str(e)
 
-# --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ ---
+# --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ (ระบบ List & Detail) ---
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
@@ -138,70 +127,125 @@ def officer_dashboard():
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None
+            st.session_state.view_mode = "list"
             st.rerun()
 
     try:
         df = conn.read(ttl=0)
-        tab1, tab2 = st.tabs(["🔎 รายการทั้งหมด", "🛠 สอบสวนและบันทึกผล"])
         
-        with tab1:
-            # ปรับแต่งตาราง: หัวข้อภาษาไทย และนำเลขเคสขึ้นต้น
-            st.write("📌 คลิกเลือกเลขเคสใน Tab สอบสวนเพื่อดูรายละเอียดเชิงลึก")
-            display_df = df[['Report_ID', 'Timestamp', 'Incident_Type', 'Location', 'Status']].copy()
+        # --- VIEW MODE: LIST (หน้ารายการ) ---
+        if st.session_state.view_mode == "list":
+            st.info("💡 คลิกที่แถวรายการเพื่อเข้าไป **สอบสวนและบันทึกผล**")
+            
+            # เตรียมตารางแสดงผล
+            display_df = df.copy()
+            # ย้ายคอลัมน์ Report_ID มาหน้าสุด และเลือกเฉพาะคอลัมน์ที่จำเป็น
+            cols = ['Report_ID', 'Timestamp', 'Incident_Type', 'Location', 'Status']
+            display_df = display_df[cols]
             display_df.columns = ['เลขที่รับแจ้ง', 'วันเวลาที่แจ้ง', 'ประเภทเหตุ', 'สถานที่', 'สถานะปัจจุบัน']
-            st.dataframe(display_df.iloc[::-1], use_container_width=True)
+            
+            # ใช้ event selection เพื่อจับการกดที่แถว
+            event = st.dataframe(
+                display_df.iloc[::-1], # เรียงใหม่ไปเก่า
+                use_container_width=True,
+                hide_index=True,
+                on_select="rerun", # กดปุ๊บ รีรันปั๊บ
+                selection_mode="single-row"
+            )
+            
+            # ตรวจสอบว่ามีการเลือกแถวหรือไม่
+            if len(event.selection.rows) > 0:
+                selected_row_index = event.selection.rows[0]
+                # ดึง ID จาก DataFrame ที่แสดงผล (ต้องระวังเรื่อง index เพราะเรา reverse ด้วย iloc[::-1])
+                # วิธีที่ชัวร์คือดึงจาก index ของ display_df ตัวจริง
+                actual_index = display_df.iloc[::-1].index[selected_row_index]
+                selected_id = df.loc[actual_index, 'Report_ID']
+                
+                st.session_state.selected_case_id = selected_id
+                st.session_state.view_mode = "detail" # เปลี่ยนโหมดเป็นหน้าสอบสวน
+                st.rerun()
 
-        with tab2:
-            ids = df['Report_ID'].dropna().unique().tolist()
-            sid = st.selectbox("เลือกเลขที่รับแจ้ง:", ids, index=ids.index(st.session_state.selected_case_id) if st.session_state.selected_case_id in ids else 0)
-            st.session_state.selected_case_id = sid
+        # --- VIEW MODE: DETAIL (หน้าสอบสวน) ---
+        elif st.session_state.view_mode == "detail":
+            sid = st.session_state.selected_case_id
             sel = df[df['Report_ID'] == sid]
             
             if not sel.empty:
-                idx = sel.index[0]; row = sel.iloc[0]
+                idx = sel.index[0]
+                row = sel.iloc[0]
+                
+                # ปุ่มย้อนกลับ
+                if st.button("⬅️ กลับไปหน้ารายการทั้งหมด"):
+                    st.session_state.view_mode = "list"
+                    st.rerun()
+
+                st.markdown(f"### 📝 สอบสวนเคส: {sid}")
                 is_admin = user['role'] == 'admin'
+
                 with st.container(border=True):
-                    st.subheader(f"🔢 เลขที่รับแจ้ง: {sid}")
-                    col_det1, col_det2 = st.columns([2, 1])
-                    with col_det1:
-                        st.write(f"👤 **ผู้แจ้ง:** {row['Reporter']} | 🚨 **ประเภท:** {row['Incident_Type']}")
-                        st.write(f"📝 **รายละเอียดเหตุการณ์:** {row['Details']}")
-                    with col_det2:
+                    # ส่วนแสดงรายละเอียดและรูปภาพ
+                    c1, c2 = st.columns([2, 1])
+                    with c1:
+                        st.write(f"**ผู้แจ้ง:** {row['Reporter']}")
+                        st.write(f"**ประเภท:** {row['Incident_Type']} | **สถานที่:** {row['Location']}")
+                        st.info(f"**รายละเอียด:** {row['Details']}")
+                    with c2:
                         img_data = clean_val(row.get('Image_Data'))
                         if img_data:
                             try:
                                 decoded_img = base64.b64decode(img_data)
-                                st.image(decoded_img, caption="📸 ภาพประกอบเหตุการณ์", use_container_width=True)
-                            except: st.info("ไม่สามารถแสดงรูปภาพได้")
-                    
+                                st.image(decoded_img, caption="หลักฐาน/รูปภาพ", use_container_width=True)
+                            except: st.error("รูปภาพเสียหาย")
+                        else:
+                            st.caption("ไม่มีรูปภาพแนบ")
+
                     st.markdown("---")
-                    st.write("📋 **บันทึกผลการสอบสวน**")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        v_vic = st.text_input("ผู้เสียหาย", value=clean_val(row.get('Victim')), disabled=not is_admin, placeholder="ระบุชื่อผู้เสียหาย...")
-                        v_acc = st.text_input("ผู้ถูกกล่าวหา", value=clean_val(row.get('Accused')), disabled=not is_admin, placeholder="ระบุชื่อผู้ถูกกล่าวหา...")
-                        v_wit = st.text_input("พยาน", value=clean_val(row.get('Witness')), disabled=not is_admin, placeholder="ระบุชื่อพยาน (ถ้ามี)...")
-                    with c2:
-                        v_tea = st.text_input("ครูผู้สอบสวน", value=clean_val(row.get('Teacher_Investigator')), disabled=not is_admin, placeholder="ระบุชื่อครู...")
-                        v_stu = st.text_input("ตำรวจนักเรียนสอบสวน", value=clean_val(row.get('Student_Police_Investigator')), disabled=not is_admin, placeholder="ระบุชื่อตำรวจนักเรียน...")
+                    st.write("#### ✍️ บันทึกผลการสอบสวน")
+                    
+                    # ช่องกรอกข้อมูล 5 ฝ่าย
+                    f1, f2 = st.columns(2)
+                    with f1:
+                        v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin, placeholder="ระบุชื่อ...")
+                        v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=not is_admin, placeholder="ระบุชื่อ...")
+                        v_wit = st.text_input("พยาน *", value=clean_val(row.get('Witness')), disabled=not is_admin, placeholder="ระบุชื่อ...")
+                    with f2:
+                        v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=not is_admin, placeholder="ระบุชื่อ...")
+                        v_stu = st.text_input("ตำรวจนักเรียนสอบสวน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=not is_admin, placeholder="ระบุชื่อ...")
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
                         v_sta = st.selectbox("สถานะ", opts, index=opts.index(row['Status']) if row['Status'] in opts else 0, disabled=not is_admin)
                     
-                    v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ", value=clean_val(row.get('Statement')), disabled=not is_admin, placeholder="ระบุรายละเอียดการสอบสวนและคำให้การ...")
+                    v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin, placeholder="ต้องระบุรายละเอียดให้ครบถ้วน...")
 
-                    if is_admin:
-                        if st.button("💾 บันทึกการสอบสวน", type="primary", use_container_width=True):
-                            df.at[idx, 'Victim'], df.at[idx, 'Accused'], df.at[idx, 'Witness'] = v_vic, v_acc, v_wit
-                            df.at[idx, 'Teacher_Investigator'], df.at[idx, 'Student_Police_Investigator'] = v_tea, v_stu
-                            df.at[idx, 'Status'], df.at[idx, 'Statement'], df.at[idx, 'Handled_By'] = v_sta, v_stmt, user['name']
-                            conn.update(data=df)
-                            st.success("✅ ระบบบันทึกข้อมูลการสอบสวนเรียบร้อยแล้ว!") # ยืนยันการบันทึก
-                            st.rerun()
-                    else: st.info("🔒 เฉพาะแอดมินเท่านั้นที่สามารถบันทึกข้อมูลได้")
-                    
+                    # ปุ่ม PDF แสดงตลอด (ตามคำขอ "ปุ่มpdfหาย")
                     pdf_bytes = create_pdf(df.loc[idx])
                     if isinstance(pdf_bytes, (bytes, bytearray)):
-                        st.download_button("📥 พิมพ์ PDF ใบสรุปผลสอบสวน", data=bytes(pdf_bytes), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True)
+                        st.download_button("📥 ดาวน์โหลด PDF", data=bytes(pdf_bytes), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True)
+                    
+                    # ปุ่มบันทึก (ตรวจสอบความครบถ้วน)
+                    if is_admin:
+                        # เช็คว่ากรอกครบไหม (ถ้าไม่ครบ ปุ่มจะจาง/กดไม่ได้)
+                        is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
+                        
+                        if st.button("💾 บันทึกข้อมูลการสอบสวน", type="primary", use_container_width=True, disabled=not is_complete):
+                            df.at[idx, 'Victim'] = v_vic
+                            df.at[idx, 'Accused'] = v_acc
+                            df.at[idx, 'Witness'] = v_wit
+                            df.at[idx, 'Teacher_Investigator'] = v_tea
+                            df.at[idx, 'Student_Police_Investigator'] = v_stu
+                            df.at[idx, 'Status'] = v_sta
+                            df.at[idx, 'Statement'] = v_stmt
+                            df.at[idx, 'Handled_By'] = user['name']
+                            conn.update(data=df)
+                            
+                            # แจ้งเตือนแบบ Toast และ Success
+                            st.toast("✅ บันทึกข้อมูลเรียบร้อยแล้ว!", icon="💾")
+                            st.success("บันทึกข้อมูลการสอบสวนลงระบบเรียบร้อยแล้ว!")
+                            time.sleep(1.5) # หน่วงเวลาให้เห็นข้อความก่อนรีเฟรช
+                            st.rerun()
+                        
+                        if not is_complete:
+                            st.caption("⚠️ กรุณากรอกข้อมูลในช่องที่มีเครื่องหมาย * ให้ครบทุกช่อง เพื่อเปิดใช้งานปุ่มบันทึก")
+
     except Exception as e: st.error(f"Error: {e}")
 
 # --- 📝 5. หน้าจอหลัก (แจ้งเหตุ) ---
@@ -212,7 +256,7 @@ def main_page():
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุสารวัตรนักเรียน</h1>", unsafe_allow_html=True)
     
     if st.session_state.submitted_id:
-        st.markdown(f"<div class='report-id-box'><h2>ส่งข้อมูลสำเร็จ!</h2><p>เลขรับแจ้งของคุณคือ: <b>{st.session_state.submitted_id}</b></p></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='report-id-box'><h2>ส่งข้อมูลสำเร็จ!</h2><p>เลขรับแจ้ง: <b>{st.session_state.submitted_id}</b></p></div>", unsafe_allow_html=True)
         if st.button("แจ้งเรื่องใหม่"):
             st.session_state.submitted_id = None
             st.rerun()
@@ -229,7 +273,7 @@ def main_page():
             det = st.text_area("รายละเอียดเหตุการณ์")
             
             if st.form_submit_button("📤 ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
-                if rep and typ and loc: # บังคับกรอกฟิลด์สำคัญ
+                if rep and typ and loc:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     img_b64 = ""
                     if img_file:
