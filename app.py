@@ -1,12 +1,17 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz # เพิ่มสำหรับการจัดการเวลาประเทศไทย
 import random
 import os
 from fpdf import FPDF
 
-# --- 1. ตั้งค่าหน้าจอ (ต้องอยู่บนสุดเสมอ) ---
+# --- 1. การตั้งค่าระบบเวลาประเทศไทย ---
+def get_now_th():
+    tz = pytz.timezone('Asia/Bangkok')
+    return datetime.now(tz)
+
 st.set_page_config(page_title="ระบบสารวัตรนักเรียน", page_icon="👮‍♂️", layout="wide")
 
 st.markdown("""
@@ -20,7 +25,7 @@ st.markdown("""
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 🔑 2. ระบบจัดการสิทธิ์ ---
+# --- 🔑 2. ข้อมูลเจ้าหน้าที่ ---
 OFFICER_ACCOUNTS = {
     "Patwit1510": {"name": "แอดมินสูงสุด", "role": "admin"},
     "Pencharee001": {"name": "ครูเพ็ญชรีย์ (ปกครอง)", "role": "admin"},
@@ -37,7 +42,7 @@ if 'current_user' not in st.session_state:
 if 'submitted_id' not in st.session_state:
     st.session_state.submitted_id = None
 
-# --- 📄 3. ฟังก์ชันสร้าง PDF (แบบทางการ) ---
+# --- 📄 3. ฟังก์ชันสร้าง PDF (ปรับปรุง Layout และระยะบรรทัด) ---
 def create_pdf(row_data):
     try:
         pdf = FPDF()
@@ -50,58 +55,80 @@ def create_pdf(row_data):
         pdf.add_font('ThaiFont', '', font_path)
         
         # --- หัวกระดาษ ---
-        pdf.set_font('ThaiFont', '', 20)
-        pdf.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='C')
+        pdf.set_font('ThaiFont', '', 22)
+        pdf.cell(0, 12, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='C')
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการ", ln=True, align='C')
-        pdf.line(10, 32, 200, 32)
-        pdf.ln(10)
+        pdf.ln(2)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(8)
 
         # --- ข้อมูลทั่วไป ---
         pdf.set_font('ThaiFont', '', 15)
-        pdf.cell(pdf.epw/2, 10, txt=f"เลขที่รับแจ้ง: {row_data.get('Report_ID', '-')}", ln=0)
-        pdf.cell(pdf.epw/2, 10, txt=f"วันที่แจ้งเหตุ: {row_data.get('Timestamp', '-')}", ln=1, align='R')
-        pdf.cell(0, 10, txt=f"ประเภทเหตุการณ์: {row_data.get('Incident_Type', '-')}", ln=True)
-        pdf.cell(0, 10, txt=f"สถานที่เกิดเหตุ: {row_data.get('Location', '-')}", ln=True)
-        pdf.cell(0, 10, txt=f"ชื่อผู้แจ้งเหตุ: {row_data.get('Reporter', 'ไม่ประสงค์ออกนาม')}", ln=True)
+        # เลขที่รับแจ้ง และ วันที่ (แยกซ้ายขวา)
+        y_pos = pdf.get_y()
+        pdf.set_xy(10, y_pos)
+        pdf.cell(95, 10, txt=f"เลขที่รับแจ้ง: {row_data.get('Report_ID', '-')}")
+        pdf.set_xy(105, y_pos)
+        pdf.cell(95, 10, txt=f"วันที่แจ้งเหตุ: {row_data.get('Timestamp', '-')}", align='R')
+        pdf.ln(10)
+
+        pdf.multi_cell(0, 10, txt=f"ประเภทเหตุการณ์: {row_data.get('Incident_Type', '-')}")
+        pdf.multi_cell(0, 10, txt=f"สถานที่เกิดเหตุ: {row_data.get('Location', '-')}")
+        pdf.multi_cell(0, 10, txt=f"ชื่อผู้แจ้งเหตุ: {row_data.get('Reporter', 'ไม่ประสงค์ออกนาม')}")
         
         pdf.ln(2)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        # --- รายละเอียด ---
+        # --- รายละเอียดเหตุการณ์ (ใช้ multi_cell เพื่อป้องกันการทับกัน) ---
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(0, 10, txt="รายละเอียดเหตุการณ์:", ln=True)
         pdf.set_font('ThaiFont', '', 14)
         pdf.multi_cell(0, 8, txt=str(row_data.get('Details', '-')))
-        pdf.ln(5)
+        pdf.ln(10)
 
         # --- ผลการดำเนินงาน ---
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(0, 10, txt="ผลการดำเนินการของเจ้าหน้าที่:", ln=True)
-        pdf.set_fill_color(245, 245, 245)
-        pdf.set_font('ThaiFont', '', 14)
-        status_txt = f"สถานะปัจจุบัน: {row_data.get('Status', '-')}\nรายละเอียด: {row_data.get('Action_Details', '-')}"
-        pdf.multi_cell(0, 10, txt=status_txt, border=1, fill=True)
-        pdf.ln(20)
-
-        # --- ส่วนลงนาม ---
-        curr_y = pdf.get_y()
-        pdf.set_xy(10, curr_y)
-        pdf.cell(90, 10, txt="ลงชื่อ..........................................................", ln=True, align='C')
-        pdf.cell(90, 10, txt=f"( {row_data.get('Handled_By', '.................................')} )", ln=True, align='C')
-        pdf.cell(90, 8, txt="เจ้าหน้าที่ผู้ดำเนินการ", ln=True, align='C')
         
-        pdf.set_xy(110, curr_y)
-        pdf.cell(90, 10, txt="ลงชื่อ..........................................................", ln=True, align='C')
-        pdf.cell(90, 10, txt="(..........................................................)", ln=True, align='C')
-        pdf.cell(90, 8, txt="อาจารย์ที่ปรึกษา/หัวหน้างานปกครอง", ln=True, align='C')
+        # กล่องข้อมูลสถานะ
+        pdf.set_fill_color(248, 249, 250)
+        pdf.set_font('ThaiFont', '', 14)
+        status_txt = f"สถานะปัจจุบัน: {row_data.get('Status', '-')}\nรายละเอียดการจัดการ: {row_data.get('Action_Details', '-')}"
+        # คำนวณความสูงอัตโนมัติจากเนื้อหา
+        pdf.multi_cell(0, 10, txt=status_txt, border=1, fill=True)
+        
+        pdf.ln(25) # เว้นระยะสำหรับเซ็นชื่อ
+
+        # --- ส่วนลงนาม (จัดตำแหน่งใหม่ให้สมดุล) ---
+        curr_y = pdf.get_y()
+        if curr_y > 240: # ถ้าใกล้หมดหน้าให้ขึ้นหน้าใหม่
+            pdf.add_page()
+            curr_y = 20
+            
+        pdf.set_font('ThaiFont', '', 14)
+        # ฝั่งซ้าย
+        pdf.set_xy(15, curr_y)
+        pdf.cell(80, 7, txt="ลงชื่อ..........................................................", ln=True, align='C')
+        pdf.set_x(15)
+        pdf.cell(80, 7, txt=f"( {row_data.get('Handled_By', '.................................')} )", ln=True, align='C')
+        pdf.set_x(15)
+        pdf.cell(80, 7, txt="เจ้าหน้าที่ผู้ดำเนินการ", ln=True, align='C')
+        
+        # ฝั่งขวา
+        pdf.set_xy(115, curr_y)
+        pdf.cell(80, 7, txt="ลงชื่อ..........................................................", ln=True, align='C')
+        pdf.set_x(115)
+        pdf.cell(80, 7, txt="(..........................................................)", ln=True, align='C')
+        pdf.set_x(115)
+        pdf.cell(80, 7, txt="อาจารย์ที่ปรึกษา/หัวหน้างานปกครอง", ln=True, align='C')
 
         return pdf.output()
     except Exception as e:
         return f"ERROR: {str(e)}"
 
-# --- 📋 4. หน้าจอเจ้าหน้าที่ ---
+# --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ ---
 def officer_dashboard():
     user = st.session_state.current_user
     col1, col2 = st.columns([4, 1])
@@ -180,9 +207,11 @@ def main_page():
                 det = st.text_area("รายละเอียดเหตุการณ์ *")
                 if st.form_submit_button("📤 ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
                     if loc and det:
-                        rid = f"POL-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+                        # สร้าง ID และบันทึกเวลาประเทศไทย
+                        now_th = get_now_th()
+                        rid = f"POL-{now_th.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                         df_old = conn.read(ttl=0)
-                        new_r = pd.DataFrame([{"Timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Action_Details": "", "Handled_By": "", "Report_ID": rid}])
+                        new_r = pd.DataFrame([{"Timestamp": now_th.strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Action_Details": "", "Handled_By": "", "Report_ID": rid}])
                         conn.update(data=pd.concat([df_old, new_r], ignore_index=True))
                         st.session_state.submitted_id = rid
                         st.rerun()
@@ -195,7 +224,6 @@ def main_page():
                 st.session_state.current_user = OFFICER_ACCOUNTS[pw]
                 st.rerun()
 
-# --- 🚀 6. รันแอป ---
 if st.session_state.current_user:
     officer_dashboard()
 else:
