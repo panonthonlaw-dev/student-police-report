@@ -21,14 +21,12 @@ def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
 # --- 2. ระบบจัดการ State (ตัวแปรจำค่า) ---
-# ต้องประกาศฟังก์ชัน Callback ก่อนใช้งาน
+# ฟังก์ชัน Callback (สำคัญมาก! ช่วยให้กดปุ่มแล้วไม่เด้งหลุด)
 def view_case(rid):
-    """ฟังก์ชันสำหรับกดปุ่มแล้วไปหน้าสอบสวนทันที"""
     st.session_state.selected_case_id = rid
     st.session_state.view_mode = "detail"
 
 def back_to_list():
-    """ฟังก์ชันสำหรับกดปุ่มย้อนกลับ"""
     st.session_state.view_mode = "list"
     st.session_state.selected_case_id = None
 
@@ -45,16 +43,15 @@ st.markdown("""
     .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
     .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    
     /* ปรับแต่งปุ่มให้เต็มช่อง */
-    div[data-testid="column"] button { width: 100%; }
+    div[data-testid="column"] button { width: 100%; border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_val(val):
-    if pd.isna(val) or str(val).lower() == "nan" or str(val) == "": return ""
+    if pd.isna(val) or str(val).lower() == "nan" or str(val) == "None" or str(val) == "": return ""
     return str(val)
 
 # --- 🔑 3. ข้อมูลบัญชีและระบบสิทธิ์ ---
@@ -105,7 +102,8 @@ def create_pdf(row_data):
         pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
         pdf.ln(10); pdf.set_font('ThaiFont', '', 14)
-        # ลายเซ็น 5 ฝ่าย
+        
+        # ส่วนลงชื่อ 5 ฝ่าย
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C')
@@ -146,7 +144,8 @@ def officer_dashboard():
     try:
         df = conn.read(ttl=0)
         
-        # *** แก้ไขสำคัญ: บังคับให้ Report_ID เป็น String เสมอ เพื่อแก้ปัญหาเลขหาย ***
+        # [FIX] บังคับแปลงเป็น String และจัดการค่าว่าง เพื่อไม่ให้เลขหาย
+        df = df.fillna("") # เติมค่าว่างในตารางทั้งหมด
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace('.0', '', regex=False)
 
         # --- VIEW MODE: LIST (หน้ารายการ) ---
@@ -161,13 +160,14 @@ def officer_dashboard():
             c4.markdown("**สถานะ**")
             st.markdown("---")
 
-            # แสดงรายการ
+            # วนลูปแสดงรายการ (จากใหม่ไปเก่า)
+            # [FIX] ลบเงื่อนไข if not rid continue ออก เพื่อให้แสดงทุกแถวแม้เลขผิดพลาด
             for index, row in df.iloc[::-1].iterrows():
-                rid = row['Report_ID']
+                # จัดการ ID ให้ชัวร์ว่ามีค่า
+                raw_rid = str(row.get('Report_ID', '')).strip()
+                rid = raw_rid if raw_rid not in ["", "nan", "None"] else "ไม่ระบุเลขที่"
                 
-                # ตรวจสอบว่ามีข้อมูลจริงไหม (ป้องกันแถวว่าง)
-                if not rid or rid == "nan": continue
-
+                # เช็คสถานะ
                 has_result = clean_val(row.get('Statement')) != ""
                 
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
@@ -178,21 +178,22 @@ def officer_dashboard():
                         pdf_data = create_pdf(row)
                         if isinstance(pdf_data, (bytes, bytearray)):
                             st.download_button(
-                                label=f"📥 {rid} (PDF)",
+                                label=f"📥 {rid}",
                                 data=bytes(pdf_data),
                                 file_name=f"Report_{rid}.pdf",
                                 mime="application/pdf",
                                 use_container_width=True,
-                                type="primary"
+                                type="primary",
+                                help="บันทึกผลแล้ว: คลิกเพื่อดาวน์โหลด PDF"
                             )
-                    # ถ้ายังไม่มีผลสอบสวน -> ปุ่มไปหน้า Detail (ใช้ on_click เพื่อความเสถียร)
+                    # ถ้ายังไม่มีผลสอบสวน -> ปุ่มไปหน้า Detail
                     else:
                         st.button(
                             f"📝 {rid}", 
-                            key=f"btn_{rid}_{index}", # ใช้ index ช่วยให้ key ไม่ซ้ำแน่นอน
+                            key=f"btn_{index}", # ใช้ index เป็น key เพื่อไม่ให้ซ้ำกับ rid ที่อาจว่าง
                             use_container_width=True,
-                            on_click=view_case, # เรียกใช้ Callback Function
-                            args=(rid,) # ส่ง rid ไปให้ฟังก์ชัน
+                            on_click=view_case, # ใช้ Callback Function
+                            args=(raw_rid,) # ส่ง rid จริงไป (แม้จะว่าง)
                         )
                 
                 with cc2: st.write(row.get('Timestamp', '-'))
@@ -216,7 +217,6 @@ def officer_dashboard():
                 idx = sel.index[0]
                 row = sel.iloc[0]
                 
-                # ปุ่มย้อนกลับใช้ Callback เพื่อความชัวร์
                 st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list)
 
                 st.markdown(f"### 📝 สอบสวนเคส: {sid}")
@@ -238,8 +238,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    st.write("#### ✍️ บันทึกผลการสอบสวน")
                     
+                    st.write("#### ✍️ บันทึกผลการสอบสวน")
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -251,7 +251,6 @@ def officer_dashboard():
                         
                         current_status = row.get('Status', 'รอดำเนินการ')
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
-                        # ป้องกัน Error กรณีสถานะเดิมไม่อยู่ในตัวเลือก
                         idx_status = opts.index(current_status) if current_status in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_status, disabled=not is_admin)
                     
@@ -273,7 +272,6 @@ def officer_dashboard():
                             st.toast("✅ บันทึกข้อมูลเรียบร้อยแล้ว!", icon="💾")
                             st.success("✅ บันทึกข้อมูลการสอบสวนลงระบบเรียบร้อยแล้ว!")
                             time.sleep(2)
-                            # กลับหน้าหลักด้วยการเซ็ต state แล้ว rerun
                             st.session_state.view_mode = "list"
                             st.rerun()
                             
@@ -281,7 +279,7 @@ def officer_dashboard():
                             st.caption("⚠️ กรุณากรอกข้อมูลที่มีเครื่องหมาย * ให้ครบทุกช่อง เพื่อเปิดใช้งานปุ่มบันทึก")
             else:
                 st.error("ไม่พบข้อมูลเคสนี้ (อาจถูกลบไปแล้ว)")
-                if st.button("กลับ"): back_to_list()
+                st.button("กลับ", on_click=back_to_list)
 
     except Exception as e: st.error(f"Error: {e}")
 
@@ -337,7 +335,7 @@ def main_page():
                 st.rerun()
             else: st.error("❌ รหัสผ่านไม่ถูกต้อง")
 
-# --- 🚀 7. รันระบบ ---
+# --- 7. รันระบบ ---
 if st.session_state.current_user:
     officer_dashboard()
 else:
