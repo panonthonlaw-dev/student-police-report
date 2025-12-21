@@ -422,7 +422,7 @@ def main_page():
             st.markdown("---")
             # Checkbox PDPA
             pdpa_accept = st.checkbox("ข้าพเจ้ายินยอมให้ข้อมูลส่วนบุคคลเพื่อใช้ในการดำเนินงานของงานกิจการนักเรียน", value=False)
-            st.markdown("<h5 style='text-align: center; color: #1E3A8A;'>และทราบว่าการแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามประมวลกฎหมายอาญา</h5>", unsafe_allow_html=True)
+            st.markdown("<h5 style='text-align:left; color: #1E3A8A;'>และทราบว่าการแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามประมวลกฎหมายอาญา</h5>", unsafe_allow_html=True)
             
             if st.form_submit_button("ส่งข้อมูล", use_container_width=True):
                 if not pdpa_accept:
