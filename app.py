@@ -7,6 +7,7 @@ import random
 import os
 import base64
 import time
+import math
 from fpdf import FPDF
 from PIL import Image
 import io
@@ -20,68 +21,7 @@ FONT_FILE = "THSarabunNew.ttf"
 def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
-# --- 2. ระบบจัดการ State ---
-def view_case(rid):
-    st.session_state.selected_case_id = rid
-    st.session_state.view_mode = "detail"
-
-def back_to_list():
-    st.session_state.view_mode = "list"
-    st.session_state.selected_case_id = None
-
-if 'current_user' not in st.session_state: st.session_state.current_user = None
-if 'submitted_id' not in st.session_state: st.session_state.submitted_id = None
-if 'last_activity' not in st.session_state: st.session_state.last_activity = get_now_th()
-if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
-if 'selected_case_id' not in st.session_state: st.session_state.selected_case_id = None
-if 'unlock_password' not in st.session_state: st.session_state.unlock_password = ""
-
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
-    .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
-    .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
-    .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    div[data-testid="column"] button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .locked-warning { color: #856404; background-color: #fff3cd; border-color: #ffeeba; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
-    </style>
-""", unsafe_allow_html=True)
-
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-def clean_val(val):
-    if pd.isna(val) or str(val).lower() in ["nan", "none", "nat", ""] or val is None: return ""
-    return str(val).strip()
-
-# --- 3. ข้อมูลบัญชี (Secrets Management) ---
-# ระบบจะพยายามดึงจาก st.secrets ก่อน ถ้าไม่มีจะใช้ค่า Default (Hardcoded)
-# วิธีตั้งค่า Secrets: สร้างไฟล์ .streamlit/secrets.toml แล้วใส่ข้อมูลตามรูปแบบด้านล่าง
-DEFAULT_ACCOUNTS = {
-    "Patwit1510": {"name": "แอดมินสูงสุด", "role": "admin"},
-    "Pencharee001": {"name": "ครูเพ็ญชรีย์ (ปกครอง)", "role": "admin"},
-    "Chaiya001": {"name": "ครูไชยา(ปกครอง)", "role": "admin"},
-    "Jak001": {"name": "ยามจักร (รปภ.)", "role": "admin"},
-    "User01": {"name": "ผู้กำกับ(ตำรวจนักเรียน)", "role": "admin"},
-    "User02": {"name": "รองผู้กำกับจราจร(ตำรวจนักเรียน)", "role": "admin"},
-    "User03": {"name": "ครูเวร (ตรวจการณ์)", "role": "viewer"},
-    "User04": {"name": "ตำรวจนักเรียน", "role": "viewer"}
-}
-
-try:
-    OFFICER_ACCOUNTS = st.secrets["officer_accounts"]
-except:
-    OFFICER_ACCOUNTS = DEFAULT_ACCOUNTS
-
-if st.session_state.current_user:
-    elapsed = (get_now_th() - st.session_state.last_activity).total_seconds()
-    if elapsed > 1800:
-        st.session_state.current_user = None
-        st.session_state.view_mode = "list"
-        st.rerun()
-    else:
-        st.session_state.last_activity = get_now_th()
-
-# --- 4. Class PDF ---
+# --- 2. Class PDF ---
 class ReportPDF(FPDF):
     def header(self):
         if os.path.exists(FONT_FILE):
@@ -184,7 +124,112 @@ def create_pdf(row_data):
         return pdf.output()
     except Exception as e: return f"ERROR: {str(e)}"
 
-# --- 5. Dashboard ---
+# --- 3. ระบบจัดการ State & Pagination ---
+def view_case(rid):
+    st.session_state.selected_case_id = rid
+    st.session_state.view_mode = "detail"
+
+def back_to_list():
+    st.session_state.view_mode = "list"
+    st.session_state.selected_case_id = None
+
+# Pagination Helper
+def get_pagination(key, total_items, limit=5):
+    if key not in st.session_state: st.session_state[key] = 1
+    current_page = st.session_state[key]
+    total_pages = math.ceil(total_items / limit)
+    if total_pages == 0: total_pages = 1
+    if current_page > total_pages: 
+        current_page = 1
+        st.session_state[key] = 1
+    
+    start_idx = (current_page - 1) * limit
+    end_idx = start_idx + limit
+    return start_idx, end_idx, current_page, total_pages
+
+# Initialize State
+if 'current_user' not in st.session_state: st.session_state.current_user = None
+if 'submitted_id' not in st.session_state: st.session_state.submitted_id = None
+if 'last_activity' not in st.session_state: st.session_state.last_activity = get_now_th()
+if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
+if 'selected_case_id' not in st.session_state: st.session_state.selected_case_id = None
+if 'unlock_password' not in st.session_state: st.session_state.unlock_password = ""
+# Pagination States
+if 'page_pending' not in st.session_state: st.session_state.page_pending = 1
+if 'page_finished' not in st.session_state: st.session_state.page_finished = 1
+
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}
+    .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
+    .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
+    .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
+    div[data-testid="column"] button { width: 100%; border-radius: 8px; font-weight: bold; }
+    .locked-warning { color: #856404; background-color: #fff3cd; border-color: #ffeeba; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    .section-header { font-size: 18px; font-weight: bold; color: #333; margin-top: 15px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #eee; }
+    </style>
+""", unsafe_allow_html=True)
+
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def clean_val(val):
+    if pd.isna(val) or str(val).lower() in ["nan", "none", "nat", ""] or val is None: return ""
+    return str(val).strip()
+
+# --- 4. ข้อมูลบัญชี ---
+DEFAULT_ACCOUNTS = {
+    "Patwit1510": {"name": "แอดมินสูงสุด", "role": "admin"},
+    "Pencharee001": {"name": "ครูเพ็ญชรีย์ (ปกครอง)", "role": "admin"},
+    "Chaiya001": {"name": "ครูไชยา(ปกครอง)", "role": "admin"},
+    "Jak001": {"name": "ยามจักร (รปภ.)", "role": "admin"},
+    "User01": {"name": "ผู้กำกับ(ตำรวจนักเรียน)", "role": "admin"},
+    "User02": {"name": "รองผู้กำกับจราจร(ตำรวจนักเรียน)", "role": "admin"},
+    "User03": {"name": "ครูเวร (ตรวจการณ์)", "role": "viewer"},
+    "User04": {"name": "ตำรวจนักเรียน", "role": "viewer"}
+}
+try: OFFICER_ACCOUNTS = st.secrets["officer_accounts"]
+except: OFFICER_ACCOUNTS = DEFAULT_ACCOUNTS
+
+if st.session_state.current_user:
+    elapsed = (get_now_th() - st.session_state.last_activity).total_seconds()
+    if elapsed > 1800:
+        st.session_state.current_user = None
+        st.session_state.view_mode = "list"
+        st.rerun()
+    else:
+        st.session_state.last_activity = get_now_th()
+
+# --- 5. Dashboard Logic ---
+def render_case_list(df_subset, list_type):
+    # Header List
+    c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
+    c1.markdown("**เลขที่รับแจ้ง**")
+    c2.markdown("**วันเวลา**")
+    c3.markdown("**ประเภทเหตุ**")
+    c4.markdown("**สถานะ**")
+    st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+
+    if df_subset.empty:
+        st.caption("ไม่มีรายการ")
+        return
+
+    for index, row in df_subset.iterrows():
+        raw_rid = str(row.get('Report_ID', '')).strip()
+        rid_label = raw_rid if raw_rid and raw_rid.lower() not in ["nan", "none", ""] else "⚠️ ไม่พบเลข (กดดู)"
+        real_rid = raw_rid
+        has_result = clean_val(row.get('Statement')) != ""
+        
+        cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
+        with cc1:
+            btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
+            st.button(btn_label, key=f"btn_{list_type}_{index}", use_container_width=True, on_click=view_case, args=(real_rid,))
+        with cc2: st.write(row.get('Timestamp', '-'))
+        with cc3: st.write(row.get('Incident_Type', '-'))
+        with cc4:
+            if has_result: st.markdown(f"<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
+            else: st.markdown(f"<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
@@ -203,65 +248,71 @@ def officer_dashboard():
         df = df.fillna("")
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True)
 
-        # --- VIEW MODE ---
+        # --- VIEW MODE: LIST ---
         if st.session_state.view_mode == "list":
-            # --- Tab System (เพิ่ม Analytics) ---
-            tab_list, tab_stat = st.tabs(["📋 รายการแจ้งเหตุ", "📊 สถิติภาพรวม"])
+            tab_list, tab_stat = st.tabs(["📋 รายการแจ้งเหตุ (แยกสถานะ)", "📊 สถิติภาพรวม"])
             
             with tab_stat:
                 st.subheader("📊 สรุปสถิติการแจ้งเหตุ")
                 c1, c2 = st.columns(2)
                 with c1:
                     st.write("**แยกตามประเภทเหตุ**")
-                    type_counts = df['Incident_Type'].value_counts()
-                    st.bar_chart(type_counts, color="#FF4B4B")
+                    st.bar_chart(df['Incident_Type'].value_counts(), color="#FF4B4B")
                 with c2:
                     st.write("**แยกตามสถานะ**")
-                    status_counts = df['Status'].value_counts()
-                    st.bar_chart(status_counts, color="#1E3A8A")
+                    st.bar_chart(df['Status'].value_counts(), color="#1E3A8A")
 
             with tab_list:
-                # --- Search & Filter ---
-                st.markdown("##### 🔍 ค้นหาและกรองข้อมูล")
-                c_search, c_filter = st.columns([2, 1])
-                search_q = c_search.text_input("ค้นหา (เลขเคส/ชื่อผู้แจ้ง/รายละเอียด)", placeholder="พิมพ์คำค้นหา...")
-                status_f = c_filter.multiselect("สถานะ", options=df['Status'].unique(), default=[])
-
-                # Logic กรองข้อมูล
+                # Search
+                search_q = st.text_input("🔍 ค้นหา (เลขเคส/ชื่อ/รายละเอียด)", placeholder="พิมพ์เพื่อค้นหา...")
+                
+                # Filter Data
                 filtered_df = df.copy()
                 if search_q:
                     filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
-                if status_f:
-                    filtered_df = filtered_df[filtered_df['Status'].isin(status_f)]
-
-                st.markdown("---")
-                st.info(f"💡 พบข้อมูล {len(filtered_df)} รายการ")
                 
-                # Header List
-                c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
-                c1.markdown("**เลขที่รับแจ้ง (คลิก)**")
-                c2.markdown("**วันเวลา**")
-                c3.markdown("**ประเภทเหตุ**")
-                c4.markdown("**สถานะ**")
-                st.markdown("---")
+                # Sort Descending
+                filtered_df = filtered_df.iloc[::-1]
 
-                for index, row in filtered_df.iloc[::-1].iterrows():
-                    raw_rid = str(row.get('Report_ID', '')).strip()
-                    rid_label = raw_rid if raw_rid and raw_rid.lower() not in ["nan", "none", ""] else "⚠️ ไม่พบเลข (กดดู)"
-                    real_rid = raw_rid
-                    has_result = clean_val(row.get('Statement')) != ""
-                    
-                    cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                    with cc1:
-                        btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
-                        st.button(btn_label, key=f"btn_{index}", use_container_width=True, on_click=view_case, args=(real_rid,))
-                    with cc2: st.write(row.get('Timestamp', '-'))
-                    with cc3: st.write(row.get('Incident_Type', '-'))
-                    with cc4:
-                        if has_result: st.markdown(f"<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
-                        else: st.markdown(f"<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
-                    st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+                # Split Data
+                # Pending: Statement is empty
+                df_pending = filtered_df[filtered_df['Statement'].apply(clean_val) == ""]
+                # Finished: Statement is NOT empty
+                df_finished = filtered_df[filtered_df['Statement'].apply(clean_val) != ""]
 
+                # --- Section 1: Pending ---
+                st.markdown("<div class='section-header'>⏳ เคสที่ยังไม่เรียบร้อย (รอสอบสวน)</div>", unsafe_allow_html=True)
+                start_p, end_p, curr_p, tot_p = get_pagination('page_pending', len(df_pending), 5)
+                render_case_list(df_pending.iloc[start_p:end_p], "pending")
+                
+                # Pagination Buttons Pending
+                if tot_p > 1:
+                    cp1, cp2, cp3 = st.columns([1, 2, 1])
+                    with cp1: 
+                        if st.button("⬅️ ก่อนหน้า", key="prev_p", disabled=(curr_p==1)): 
+                            st.session_state.page_pending -= 1; st.rerun()
+                    with cp2: st.markdown(f"<div style='text-align:center'>หน้า {curr_p} / {tot_p}</div>", unsafe_allow_html=True)
+                    with cp3: 
+                        if st.button("ถัดไป ➡️", key="next_p", disabled=(curr_p==tot_p)): 
+                            st.session_state.page_pending += 1; st.rerun()
+
+                # --- Section 2: Finished ---
+                st.markdown("<div class='section-header' style='color:#2e7d32;'>✅ เคสที่เรียบร้อยแล้ว (มีผลสอบสวน)</div>", unsafe_allow_html=True)
+                start_f, end_f, curr_f, tot_f = get_pagination('page_finished', len(df_finished), 5)
+                render_case_list(df_finished.iloc[start_f:end_f], "finished")
+
+                # Pagination Buttons Finished
+                if tot_f > 1:
+                    cf1, cf2, cf3 = st.columns([1, 2, 1])
+                    with cf1: 
+                        if st.button("⬅️ ก่อนหน้า", key="prev_f", disabled=(curr_f==1)): 
+                            st.session_state.page_finished -= 1; st.rerun()
+                    with cf2: st.markdown(f"<div style='text-align:center'>หน้า {curr_f} / {tot_f}</div>", unsafe_allow_html=True)
+                    with cf3: 
+                        if st.button("ถัดไป ➡️", key="next_f", disabled=(curr_f==tot_f)): 
+                            st.session_state.page_finished += 1; st.rerun()
+
+        # --- VIEW MODE: DETAIL ---
         elif st.session_state.view_mode == "detail":
             sid = st.session_state.selected_case_id
             sel = df[df['Report_ID'] == sid]
@@ -292,7 +343,7 @@ def officer_dashboard():
 
                     st.markdown("---")
                     
-                    # Logic Lock
+                    # Lock Logic
                     current_status = row.get('Status', 'รอดำเนินการ')
                     is_locked = False
                     is_finished = (current_status == "จัดการแล้ว")
@@ -323,7 +374,8 @@ def officer_dashboard():
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
                         v_stu = st.text_input("ตำรวจนักเรียน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
-                        idx_stat = opts.index(current_status) if current_status in opts else 0
+                        curr = row.get('Status', 'รอดำเนินการ')
+                        idx_stat = opts.index(curr) if curr in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_stat, disabled=is_locked)
                     
                     v_stmt = st.text_area("บันทึกผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=is_locked)
@@ -371,7 +423,7 @@ def main_page():
             det = st.text_area("รายละเอียด *")
             
             st.markdown("---")
-            # --- Checkbox PDPA ---
+            # Checkbox PDPA
             pdpa_accept = st.checkbox("ข้าพเจ้ายินยอมให้ข้อมูลส่วนบุคคลเพื่อใช้ในการดำเนินงานของงานกิจการนักเรียน", value=False)
             
             if st.form_submit_button("ส่งข้อมูล", use_container_width=True):
