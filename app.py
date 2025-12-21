@@ -75,11 +75,16 @@ if st.session_state.current_user:
 # --- 4. ฟังก์ชัน PDF ---
 def create_pdf(row_data):
     try:
+        # ตรวจสอบไฟล์ฟอนต์ก่อนเริ่ม
+        if not os.path.exists(FONT_FILE):
+            return f"MISSING_FONT: ไม่พบไฟล์ {FONT_FILE} กรุณาอัปโหลดลง GitHub"
+
         pdf = FPDF()
         pdf.set_margins(15, 15, 15)
         pdf.add_page()
-        if not os.path.exists(FONT_FILE): return "MISSING_FONT"
+        
         pdf.add_font('ThaiFont', '', FONT_FILE)
+        
         if os.path.exists(LOGO_FILE): pdf.image(LOGO_FILE, x=15, y=12, w=18)
         
         pdf.set_y(15); pdf.set_font('ThaiFont', '', 20)
@@ -98,6 +103,7 @@ def create_pdf(row_data):
         pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
         pdf.ln(10); pdf.set_font('ThaiFont', '', 14)
+        # ส่วนลงชื่อ 5 ฝ่าย
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.cell(90, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C')
@@ -122,7 +128,7 @@ def create_pdf(row_data):
         printer = st.session_state.current_user['name'] if st.session_state.current_user else "System"
         pdf.cell(0, 5, txt=f"พิมพ์โดย: {printer} | {get_now_th().strftime('%d/%m/%Y %H:%M:%S')}", align='R')
         return pdf.output()
-    except Exception as e: return str(e)
+    except Exception as e: return f"ERROR: {str(e)}"
 
 # --- 5. Dashboard ---
 def officer_dashboard():
@@ -144,7 +150,7 @@ def officer_dashboard():
 
         # --- LIST MODE ---
         if st.session_state.view_mode == "list":
-            st.info("💡 **คลิกที่ปุ่มเลขที่รับแจ้ง** เพื่อเข้าไปดูรายละเอียด, แก้ไข, หรือพิมพ์ PDF")
+            st.info("💡 คลิกปุ่มเลขที่รับแจ้ง เพื่อจัดการเคส")
             
             c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
             c1.markdown("**เลขที่รับแจ้ง (คลิก)**")
@@ -163,15 +169,8 @@ def officer_dashboard():
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
                 
                 with cc1:
-                    # ปุ่มเดียวกดเข้าไปดูได้หมด
                     btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
-                    st.button(
-                        btn_label, 
-                        key=f"btn_{index}", 
-                        use_container_width=True,
-                        on_click=view_case, 
-                        args=(real_rid,)
-                    )
+                    st.button(btn_label, key=f"btn_{index}", use_container_width=True, on_click=view_case, args=(real_rid,))
                 
                 with cc2: st.write(row.get('Timestamp', '-'))
                 with cc3: st.write(row.get('Incident_Type', '-'))
@@ -213,8 +212,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    
                     st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
+                    
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -230,10 +229,10 @@ def officer_dashboard():
                     
                     v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin)
 
-                    # ปุ่มบันทึก (Admin)
+                    # ปุ่มบันทึกข้อมูล (Admin Only)
                     if is_admin:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
-                        if st.button("💾 บันทึกข้อมูล", type="secondary", use_container_width=True, disabled=not is_complete):
+                        if st.button("💾 บันทึกข้อมูล", use_container_width=True, disabled=not is_complete):
                             df.at[idx, 'Victim'] = v_vic; df.at[idx, 'Accused'] = v_acc
                             df.at[idx, 'Witness'] = v_wit; df.at[idx, 'Teacher_Investigator'] = v_tea
                             df.at[idx, 'Student_Police_Investigator'] = v_stu; df.at[idx, 'Status'] = v_sta
@@ -243,33 +242,31 @@ def officer_dashboard():
                             time.sleep(1.5); st.rerun()
                         if not is_complete: st.caption("⚠️ กรอกข้อมูล (*) ให้ครบเพื่อบันทึก")
 
-                    # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงตลอดเวลา อยู่ล่างสุด) ---
+                    # --- ปุ่มพิมพ์ PDF (อยู่ล่างสุดตามคำขอ) ---
                     st.markdown("---")
-                    st.write("#### 📄 เอกสาร")
                     
                     has_stmt = clean_val(row.get('Statement')) != ""
                     
-                    # สร้าง PDF
-                    pdf_bytes = create_pdf(row)
+                    # สร้าง PDF เพื่อเช็ค Error
+                    pdf_data = create_pdf(row)
                     
-                    if has_stmt:
-                        st.success("✅ ข้อมูลครบถ้วน พร้อมพิมพ์")
-                        btn_type = "primary" # สีแดง/ส้ม
-                        btn_label = "🖨️ พิมพ์เอกสาร (PDF)"
-                    else:
-                        st.info("ℹ️ ยังไม่มีการบันทึกผล (พิมพ์แบบฟอร์มเปล่า)")
-                        btn_type = "secondary" # สีปกติ
-                        btn_label = "🖨️ พิมพ์แบบฟอร์มเปล่า"
-
-                    if isinstance(pdf_bytes, (bytes, bytearray)):
+                    # ถ้าสร้างสำเร็จเป็น Bytes -> แสดงปุ่ม
+                    if isinstance(pdf_data, (bytes, bytearray)):
+                        label = "🖨️ พิมพ์เอกสาร (PDF)" if has_stmt else "🖨️ พิมพ์แบบฟอร์มเปล่า (ยังไม่บันทึกผล)"
+                        btn_type = "primary" if has_stmt else "secondary"
+                        
                         st.download_button(
-                            label=btn_label,
-                            data=bytes(pdf_bytes),
+                            label=label,
+                            data=bytes(pdf_data),
                             file_name=f"Report_{sid}.pdf",
                             mime="application/pdf",
                             use_container_width=True,
                             type=btn_type
                         )
+                    # ถ้าสร้างไม่สำเร็จ (เป็น String Error) -> แสดงแจ้งเตือน
+                    else:
+                        st.error(f"❌ ไม่สามารถสร้างปุ่มพิมพ์ PDF ได้: {pdf_data}")
+                        st.info("คำแนะนำ: กรุณาตรวจสอบว่ามีไฟล์ 'THSarabunNew.ttf' อยู่ใน GitHub หรือไม่")
 
             else:
                 st.error("ไม่พบข้อมูล"); st.button("กลับ", on_click=back_to_list)
