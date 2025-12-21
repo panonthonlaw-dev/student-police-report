@@ -415,20 +415,33 @@ def main_page():
     else:
         with st.form("report"):
             c1, c2 = st.columns(2)
-            with c1: rep = st.text_input("ชื่อผู้แจ้ง *"); typ = st.selectbox("ประเภทเหตุ *", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มแอลกอฮอ", "อาวุธอันตราย","ลักทรัพย์/ทำลายทรัพย์สิน","บูลลี่/ด่าทอบนโลกออนไลน์","อื่นๆ"])
-                                                                                
-            with c2: loc = st.text_input("สถานที่เกิดเหตุ *"); img = st.file_uploader("รูปภาพ (ถ้ามี)", type=['png', 'jpg', 'jpeg'])
-            det = st.text_area("รายละเอียด *")
+            with c1: 
+                rep = st.text_input("ชื่อผู้แจ้ง *")
+                # เพิ่มระดับชั้นและห้อง
+                cr1, cr2 = st.columns(2)
+                with cr1: grade = st.selectbox("ระดับชั้น *", ["ม.1", "ม.2", "ม.3", "ม.4", "ม.5", "ม.6"])
+                with cr2: room = st.selectbox("ห้อง *", [str(i) for i in range(14)]) # 0-13
+                
+                typ = st.selectbox("ประเภทเหตุ *", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มแอลกอฮอ", "อาวุธอันตราย","ลักทรัพย์/ทำลายทรัพย์สิน","บูลลี่/ด่าทอบนโลกออนไลน์","อื่นๆ"])
+                                                                            
+            with c2: 
+                loc = st.text_input("สถานที่เกิดเหตุ *")
+                img = st.file_uploader("รูปภาพ (ถ้ามี)", type=['png', 'jpg', 'jpeg'])
+            
+            # ช่องรายละเอียดพร้อมตัวอย่าง
+            det = st.text_area("รายละเอียด *", placeholder="ตัวอย่าง: สูบบุหรี่ไฟฟ้าเมื่อวันที่ 12 ธ.ค. เวลา 8.30 ที่อาคาร 4 ผู้กระทำผิดคือ... (ถ้าทราบแจ้งชื่อ ห้อง)")
             
             st.markdown("---")
             # Checkbox PDPA
             pdpa_accept = st.checkbox("ข้าพเจ้ายินยอมให้ข้อมูลส่วนบุคคลเพื่อใช้ในการดำเนินงานของงานกิจการนักเรียน", value=False)
-            st.markdown("<h7 style='text-align:left; color: ##E02424;'>และทราบว่าการแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามประมวลกฎหมายอาญา</h5>", unsafe_allow_html=True)
+            st.markdown("<h7 style='text-align:left; color: #E02424;'>และทราบว่าการแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามประมวลกฎหมายอาญา</h5>", unsafe_allow_html=True)
             
             if st.form_submit_button("ส่งข้อมูล", use_container_width=True):
                 if not pdpa_accept:
                     st.error("⚠️ กรุณายอมรับเงื่อนไข PDPA ก่อนส่งข้อมูล")
                 elif rep and typ and loc and det:
+                    # รวมข้อมูลชั้นห้องไว้ในชื่อผู้แจ้ง
+                    reporter_full = f"{rep} (ชั้น {grade}/{room})"
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     img_b64 = ""
                     if img:
@@ -437,7 +450,8 @@ def main_page():
                             im.save(buf, format="JPEG"); img_b64 = base64.b64encode(buf.getvalue()).decode()
                         except: pass
                     df_old = conn.read(ttl=0)
-                    new_r = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": img_b64}])
+                    # บันทึกโดยใช้ reporter_full
+                    new_r = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": reporter_full, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": img_b64}])
                     conn.update(data=pd.concat([df_old, new_r], ignore_index=True))
                     st.session_state.submitted_id = rid; st.rerun()
                 else: st.error("กรุณากรอกข้อมูลให้ครบ")
