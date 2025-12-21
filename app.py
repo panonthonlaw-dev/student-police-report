@@ -33,8 +33,10 @@ st.markdown("""
     .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
     .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    button:disabled { cursor: not-allowed; opacity: 0.6; }
-    .status-badge { padding: 5px 10px; border-radius: 15px; font-size: 14px; font-weight: bold; }
+    /* ปรับแต่งปุ่มให้ดูเหมือนลิงก์หรือปุ่มกดง่ายๆ */
+    .stButton button { width: 100%; border-radius: 5px; }
+    .status-pending { color: #d97706; font-weight: bold; }
+    .status-done { color: #16a34a; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -65,7 +67,7 @@ if st.session_state.current_user:
     else:
         st.session_state.last_activity = get_now_th()
 
-# --- 📄 3. ฟังก์ชันสร้าง PDF (5 ลายเซ็น + Footer) ---
+# --- 📄 3. ฟังก์ชันสร้าง PDF (คงเดิม) ---
 def create_pdf(row_data):
     try:
         pdf = FPDF()
@@ -118,7 +120,7 @@ def create_pdf(row_data):
         return pdf.output()
     except Exception as e: return str(e)
 
-# --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ ---
+# --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ (ระบบ List & Detail แบบปุ่มกด) ---
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
@@ -134,38 +136,54 @@ def officer_dashboard():
         
         # --- MODE: LIST (หน้ารายการ) ---
         if st.session_state.view_mode == "list":
-            st.info("💡 คลิกที่แถวเพื่อดูรายละเอียด | สัญลักษณ์ 📝 หมายถึงบันทึกผลสอบสวนแล้ว")
+            st.info("💡 **คำแนะนำ:** รายการสีเขียวสามารถกดเพื่อดาวน์โหลด PDF ได้ทันที | รายการปกติกดเพื่อเข้าไปบันทึกผลสอบสวน")
             
-            # เตรียมตาราง
-            display_df = df.copy()
-            
-            # สร้างคอลัมน์เช็คว่ามีผลสอบสวนหรือยัง
-            def check_status(row):
-                if clean_val(row.get('Statement')) != "":
-                    return "📝 มีผลสอบสวนแล้ว"
-                return "รอสอบสวน"
+            # หัวตาราง
+            c1, c2, c3, c4 = st.columns([2, 2, 3, 2])
+            c1.markdown("**เลขที่รับแจ้ง (คลิก)**")
+            c2.markdown("**วันเวลา**")
+            c3.markdown("**ประเภทเหตุ**")
+            c4.markdown("**สถานะเอกสาร**")
+            st.markdown("---")
 
-            display_df['สถานะเอกสาร'] = display_df.apply(check_status, axis=1)
-            
-            # จัดเรียงคอลัมน์
-            cols = ['Report_ID', 'สถานะเอกสาร', 'Timestamp', 'Incident_Type', 'Location', 'Status']
-            display_df = display_df[cols]
-            display_df.columns = ['เลขที่รับแจ้ง', 'สถานะเอกสาร', 'วันเวลาที่แจ้ง', 'ประเภทเหตุ', 'สถานที่', 'สถานะเคส']
-            
-            event = st.dataframe(
-                display_df.iloc[::-1],
-                use_container_width=True,
-                hide_index=True,
-                on_select="rerun",
-                selection_mode="single-row"
-            )
-            
-            if len(event.selection.rows) > 0:
-                actual_index = display_df.iloc[::-1].index[event.selection.rows[0]]
-                selected_id = df.loc[actual_index, 'Report_ID']
-                st.session_state.selected_case_id = selected_id
-                st.session_state.view_mode = "detail"
-                st.rerun()
+            # วนลูปแสดงรายการ (จากใหม่ไปเก่า)
+            for index, row in df.iloc[::-1].iterrows():
+                rid = row['Report_ID']
+                
+                # ตรวจสอบสถานะการสอบสวน (มี Statement หรือไม่)
+                has_result = clean_val(row.get('Statement')) != ""
+                
+                cc1, cc2, cc3, cc4 = st.columns([2, 2, 3, 2])
+                
+                with cc1:
+                    # ถ้ามีผลสอบสวนแล้ว -> ปุ่ม Download PDF
+                    if has_result:
+                        pdf_data = create_pdf(row) # สร้าง PDF เตรียมไว้
+                        if isinstance(pdf_data, (bytes, bytearray)):
+                            st.download_button(
+                                label=f"📥 {rid}",
+                                data=bytes(pdf_data),
+                                file_name=f"Report_{rid}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True,
+                                help="คลิกเพื่อดาวน์โหลด PDF (มีผลสอบสวนแล้ว)"
+                            )
+                    # ถ้ายังไม่มีผลสอบสวน -> ปุ่มไปหน้า Detail
+                    else:
+                        if st.button(f"📝 {rid}", key=f"btn_{rid}", use_container_width=True, help="คลิกเพื่อเข้าไปบันทึกผลสอบสวน"):
+                            st.session_state.selected_case_id = rid
+                            st.session_state.view_mode = "detail"
+                            st.rerun()
+                
+                with cc2: st.write(row['Timestamp'])
+                with cc3: st.write(row['Incident_Type'])
+                with cc4:
+                    if has_result:
+                        st.markdown(f"<span class='status-done'>✅ มีผลสอบสวนแล้ว</span>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<span class='status-pending'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
+                
+                st.markdown("<hr style='margin: 5px 0; opacity: 0.5;'>", unsafe_allow_html=True)
 
         # --- MODE: DETAIL (หน้าสอบสวน) ---
         elif st.session_state.view_mode == "detail":
@@ -200,13 +218,7 @@ def officer_dashboard():
 
                     st.markdown("---")
                     
-                    # ตรวจสอบว่ามีการบันทึกผลไปแล้วหรือยัง
-                    has_result = clean_val(row.get('Statement')) != ""
-                    if has_result:
-                        st.success(f"✅ คดีนี้มีการบันทึกผลการสอบสวนแล้ว (สถานะ: {row['Status']})")
-                    
                     st.write("#### ✍️ บันทึกผลการสอบสวน")
-                    
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin, placeholder="ระบุชื่อ...")
@@ -218,21 +230,12 @@ def officer_dashboard():
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
                         v_sta = st.selectbox("สถานะ", opts, index=opts.index(row['Status']) if row['Status'] in opts else 0, disabled=not is_admin)
                     
-                    v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin, placeholder="ระบุรายละเอียด...")
-
-                    # ปุ่ม PDF แสดงเสมอ (ถ้ามีข้อมูลบันทึกแล้วจะสมบูรณ์กว่า)
-                    if has_result:
-                        st.write("📄 **เอกสารพร้อมพิมพ์:**")
-                        pdf_bytes = create_pdf(df.loc[idx])
-                        if isinstance(pdf_bytes, (bytes, bytearray)):
-                            st.download_button("📥 ดาวน์โหลด PDF (บันทึกผลแล้ว)", data=bytes(pdf_bytes), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True, type="primary")
-                    else:
-                        st.warning("⚠️ กรุณาบันทึกผลการสอบสวนก่อน จึงจะสามารถดาวน์โหลด PDF ฉบับสมบูรณ์ได้")
+                    v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin, placeholder="ต้องระบุรายละเอียดให้ครบถ้วน...")
 
                     # ปุ่มบันทึก (เฉพาะ Admin)
                     if is_admin:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
-                        if st.button("💾 บันทึกข้อมูลการสอบสวน", use_container_width=True, disabled=not is_complete):
+                        if st.button("💾 บันทึกข้อมูลการสอบสวน", type="primary", use_container_width=True, disabled=not is_complete):
                             df.at[idx, 'Victim'] = v_vic
                             df.at[idx, 'Accused'] = v_acc
                             df.at[idx, 'Witness'] = v_wit
@@ -244,9 +247,13 @@ def officer_dashboard():
                             conn.update(data=df)
                             
                             st.toast("✅ บันทึกข้อมูลเรียบร้อยแล้ว!", icon="💾")
-                            st.success("บันทึกข้อมูลการสอบสวนลงระบบเรียบร้อยแล้ว!")
-                            time.sleep(1.5)
+                            st.success("✅ บันทึกข้อมูลการสอบสวนลงระบบเรียบร้อยแล้ว!")
+                            time.sleep(2)
+                            st.session_state.view_mode = "list" # บันทึกเสร็จกลับหน้ารายการ
                             st.rerun()
+                        
+                        if not is_complete:
+                            st.caption("⚠️ กรุณากรอกข้อมูลในช่องที่มีเครื่องหมาย * ให้ครบทุกช่อง เพื่อเปิดใช้งานปุ่มบันทึก")
 
     except Exception as e: st.error(f"Error: {e}")
 
