@@ -415,7 +415,8 @@ def main_page():
     else:
         with st.form("report"):
             c1, c2 = st.columns(2)
-            with c1: rep = st.text_input("ชื่อผู้แจ้ง *"); typ = st.selectbox("ประเภทเหตุ *", ["ทะเลาะวิวาท", "สารเสพติด", "ชู้สาว", "หนีเรียน", "อื่นๆ"])
+            with c1: rep = st.text_input("ชื่อผู้แจ้ง *"); typ = st.selectbox("ประเภทเหตุ *", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/", "อาวุธอันตราย", "ลักทรัพย์/ทำลายทรัพย์สิน","บูลลี่","อื่นๆ"])
+                                                                                
             with c2: loc = st.text_input("สถานที่เกิดเหตุ *"); img = st.file_uploader("รูปภาพ (ถ้ามี)", type=['png', 'jpg', 'jpeg'])
             det = st.text_area("รายละเอียด *")
             
