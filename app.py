@@ -163,9 +163,10 @@ def officer_dashboard():
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
                 
                 with cc1:
-                    # ปุ่มเดียวกดเข้าไปดูได้หมด (ตามที่ขอ "ให้แสดงเลขเคสต่อไปตลอด")
+                    # ปุ่มเดียวกดเข้าไปดูได้หมด
+                    btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
                     st.button(
-                        f"📝 {rid_label}", 
+                        btn_label, 
                         key=f"btn_{index}", 
                         use_container_width=True,
                         on_click=view_case, 
@@ -196,35 +197,6 @@ def officer_dashboard():
                 st.markdown(f"### 📝 รายละเอียดเคส: {sid if sid else '(ไม่มีเลข)'}")
                 is_admin = user['role'] == 'admin'
 
-                # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงด้านบนด้วยเผื่ออยากกดเลย) ---
-                has_stmt = clean_val(row.get('Statement')) != ""
-                if has_stmt:
-                    st.success("✅ เคสนี้บันทึกผลการสอบสวนแล้ว พร้อมพิมพ์เอกสาร")
-                    # สร้าง PDF
-                    pdf_bytes = create_pdf(row)
-                    if isinstance(pdf_bytes, (bytes, bytearray)):
-                        st.download_button(
-                            label="🖨️ พิมพ์เอกสาร (PDF)",
-                            data=bytes(pdf_bytes),
-                            file_name=f"Report_{sid}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True,
-                            type="primary", # สีแดง/ส้มเด่นๆ
-                            help="คลิกเพื่อดาวน์โหลดไฟล์ PDF สำหรับสั่งพิมพ์"
-                        )
-                else:
-                    st.warning("⚠️ ยังไม่มีการบันทึกผลการสอบสวน (PDF จะเป็นแบบฟอร์มเปล่า)")
-                    # ปุ่ม PDF แบบเปล่า (เผื่ออยากพิมพ์ไปเขียนมือ)
-                    pdf_bytes = create_pdf(row)
-                    if isinstance(pdf_bytes, (bytes, bytearray)):
-                         st.download_button(
-                            label="🖨️ พิมพ์แบบฟอร์มเปล่า (PDF)",
-                            data=bytes(pdf_bytes),
-                            file_name=f"Form_{sid}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
-
                 with st.container(border=True):
                     c1, c2 = st.columns([2, 1])
                     with c1:
@@ -241,8 +213,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
                     
+                    st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -251,14 +223,14 @@ def officer_dashboard():
                     with f2:
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=not is_admin)
                         v_stu = st.text_input("ตำรวจนักเรียนสอบสวน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=not is_admin)
-                        
-                        current_status = row.get('Status', 'รอดำเนินการ')
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
-                        idx_stat = opts.index(current_status) if current_status in opts else 0
+                        curr = row.get('Status', 'รอดำเนินการ')
+                        idx_stat = opts.index(curr) if curr in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_stat, disabled=not is_admin)
                     
                     v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin)
 
+                    # ปุ่มบันทึก (Admin)
                     if is_admin:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
                         if st.button("💾 บันทึกข้อมูล", type="secondary", use_container_width=True, disabled=not is_complete):
@@ -270,6 +242,35 @@ def officer_dashboard():
                             st.toast("✅ บันทึกเรียบร้อย!"); st.success("บันทึกสำเร็จ!")
                             time.sleep(1.5); st.rerun()
                         if not is_complete: st.caption("⚠️ กรอกข้อมูล (*) ให้ครบเพื่อบันทึก")
+
+                    # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงตลอดเวลา อยู่ล่างสุด) ---
+                    st.markdown("---")
+                    st.write("#### 📄 เอกสาร")
+                    
+                    has_stmt = clean_val(row.get('Statement')) != ""
+                    
+                    # สร้าง PDF
+                    pdf_bytes = create_pdf(row)
+                    
+                    if has_stmt:
+                        st.success("✅ ข้อมูลครบถ้วน พร้อมพิมพ์")
+                        btn_type = "primary" # สีแดง/ส้ม
+                        btn_label = "🖨️ พิมพ์เอกสาร (PDF)"
+                    else:
+                        st.info("ℹ️ ยังไม่มีการบันทึกผล (พิมพ์แบบฟอร์มเปล่า)")
+                        btn_type = "secondary" # สีปกติ
+                        btn_label = "🖨️ พิมพ์แบบฟอร์มเปล่า"
+
+                    if isinstance(pdf_bytes, (bytes, bytearray)):
+                        st.download_button(
+                            label=btn_label,
+                            data=bytes(pdf_bytes),
+                            file_name=f"Report_{sid}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            type=btn_type
+                        )
+
             else:
                 st.error("ไม่พบข้อมูล"); st.button("กลับ", on_click=back_to_list)
     except Exception as e: st.error(f"Error: {e}")
