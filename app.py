@@ -21,7 +21,7 @@ def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
 # --- 2. ระบบจัดการ State (ตัวแปรจำค่า) ---
-# ฟังก์ชัน Callback (สำคัญมาก! ช่วยให้กดปุ่มแล้วไม่เด้งหลุด)
+# ฟังก์ชัน Callback (ช่วยให้กดปุ่มแล้วไปหน้าสอบสวนได้ชัวร์ ไม่เด้งหลุด)
 def view_case(rid):
     st.session_state.selected_case_id = rid
     st.session_state.view_mode = "detail"
@@ -43,16 +43,16 @@ st.markdown("""
     .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
     .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    /* ปรับแต่งปุ่มให้เต็มช่อง */
-    div[data-testid="column"] button { width: 100%; border-radius: 8px; }
+    /* ปรับแต่งปุ่มให้เต็มช่องและตัวหนา */
+    div[data-testid="column"] button { width: 100%; border-radius: 8px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def clean_val(val):
-    if pd.isna(val) or str(val).lower() == "nan" or str(val) == "None" or str(val) == "": return ""
-    return str(val)
+    if pd.isna(val) or str(val).lower() in ["nan", "none", "nat", ""] or val is None: return ""
+    return str(val).strip()
 
 # --- 🔑 3. ข้อมูลบัญชีและระบบสิทธิ์ ---
 OFFICER_ACCOUNTS = {
@@ -92,17 +92,16 @@ def create_pdf(row_data):
         pdf.ln(5); pdf.line(15, pdf.get_y(), 195, pdf.get_y()); pdf.ln(8)
         
         pdf.set_font('ThaiFont', '', 14)
-        pdf.cell(90, 8, txt=f"เลขที่รับแจ้ง: {row_data.get('Report_ID', '-')}")
-        pdf.cell(90, 8, txt=f"วันที่แจ้งเหตุ: {row_data.get('Timestamp', '-')}", align='R', ln=True)
+        pdf.cell(90, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}")
+        pdf.cell(90, 8, txt=f"วันที่แจ้งเหตุ: {clean_val(row_data.get('Timestamp'))}", align='R', ln=True)
         pdf.ln(5)
-        pdf.multi_cell(0, 8, txt=f"ประเภทเหตุ: {row_data.get('Incident_Type', '-')} | สถานที่: {row_data.get('Location', '-')}")
-        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {row_data.get('Details', '-')}")
+        pdf.multi_cell(0, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}")
+        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {clean_val(row_data.get('Details'))}")
         
         pdf.ln(5); pdf.set_font('ThaiFont', '', 15); pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
         pdf.set_font('ThaiFont', '', 14); pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
         pdf.ln(10); pdf.set_font('ThaiFont', '', 14)
-        
         # ส่วนลงชื่อ 5 ฝ่าย
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", align='C')
         pdf.cell(90, 8, txt="ลงชื่อ..........................................................", ln=True, align='C')
@@ -144,13 +143,16 @@ def officer_dashboard():
     try:
         df = conn.read(ttl=0)
         
-        # [FIX] บังคับแปลงเป็น String และจัดการค่าว่าง เพื่อไม่ให้เลขหาย
-        df = df.fillna("") # เติมค่าว่างในตารางทั้งหมด
-        df['Report_ID'] = df['Report_ID'].astype(str).str.replace('.0', '', regex=False)
+        # [FIX CRITICAL] แก้ปัญหาชื่อคอลัมน์มีวรรค และบังคับ Report_ID เป็น String
+        df.columns = df.columns.str.strip() # ลบช่องว่างหัวตาราง
+        if 'Report_ID' not in df.columns: df['Report_ID'] = "" # กัน Error ถ้าคอลัมน์หาย
+        
+        df = df.fillna("") # แทนค่าว่างทั้งหมดด้วย ""
+        df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True) # แปลงเป็นข้อความและลบ .0
 
         # --- VIEW MODE: LIST (หน้ารายการ) ---
         if st.session_state.view_mode == "list":
-            st.info("💡 รายการสีเขียว = จบเคสแล้ว (กดเพื่อโหลด PDF) | รายการปกติ = กดเพื่อเข้าไปสอบสวน")
+            st.info("💡 **คำแนะนำ:** รายการสีเขียว = จบเคสแล้ว (กดเพื่อโหลด PDF) | รายการปกติ = กดเพื่อเข้าไปสอบสวน")
             
             # หัวตาราง
             c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
@@ -160,40 +162,45 @@ def officer_dashboard():
             c4.markdown("**สถานะ**")
             st.markdown("---")
 
-            # วนลูปแสดงรายการ (จากใหม่ไปเก่า)
-            # [FIX] ลบเงื่อนไข if not rid continue ออก เพื่อให้แสดงทุกแถวแม้เลขผิดพลาด
+            # วนลูปแสดงรายการ
             for index, row in df.iloc[::-1].iterrows():
-                # จัดการ ID ให้ชัวร์ว่ามีค่า
+                # [FIX] ดึง ID และตรวจสอบว่ามีค่าหรือไม่
                 raw_rid = str(row.get('Report_ID', '')).strip()
-                rid = raw_rid if raw_rid not in ["", "nan", "None"] else "ไม่ระบุเลขที่"
                 
-                # เช็คสถานะ
+                # ถ้า ID ว่าง ให้ตั้งชื่อปุ่มพิเศษ เพื่อให้กดได้ ไม่ข้ามบรรทัด
+                if raw_rid and raw_rid.lower() not in ["nan", "none", ""]:
+                    rid_label = f"📝 {raw_rid}"
+                    real_rid = raw_rid
+                else:
+                    rid_label = "⚠️ ไม่พบเลขเคส (กดเพื่อตรวจสอบ)"
+                    real_rid = raw_rid # ส่งค่าว่างไป เดี๋ยวไปจัดการในหน้า Detail
+                
                 has_result = clean_val(row.get('Statement')) != ""
                 
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
                 
                 with cc1:
-                    # ถ้ามีผลสอบสวนแล้ว -> ปุ่ม Download PDF (สีเขียว)
-                    if has_result:
+                    # ถ้ามีผลสอบสวนแล้ว และมีเลขเคสชัดเจน -> ปุ่ม Download PDF (สีเขียว)
+                    if has_result and real_rid != "ไม่พบเลขเคส (กดเพื่อตรวจสอบ)":
                         pdf_data = create_pdf(row)
                         if isinstance(pdf_data, (bytes, bytearray)):
                             st.download_button(
-                                label=f"📥 {rid}",
+                                label=f"📥 {real_rid}",
                                 data=bytes(pdf_data),
-                                file_name=f"Report_{rid}.pdf",
+                                file_name=f"Report_{real_rid}.pdf",
                                 mime="application/pdf",
                                 use_container_width=True,
                                 type="primary",
                                 help="บันทึกผลแล้ว: คลิกเพื่อดาวน์โหลด PDF"
                             )
-                    # ถ้ายังไม่มีผลสอบสวน -> ปุ่มไปหน้า Detail
+                    # ถ้ายังไม่มีผลสอบสวน หรือเลขเคสหาย -> ปุ่มไปหน้า Detail
                     else:
                         st.button(
-                            f"📝 {rid}", 
-                            key=f"btn_{index}", # ใช้ index เป็น key เพื่อไม่ให้ซ้ำกับ rid ที่อาจว่าง
+                            rid_label, 
+                            key=f"btn_{index}", # ใช้ index เป็น key รับรองไม่ซ้ำ
                             use_container_width=True,
-                            on_click=view_case, # ใช้ Callback Function
-                            args=(raw_rid,) # ส่ง rid จริงไป (แม้จะว่าง)
+                            on_click=view_case, # ใช้ Callback: กดแล้วไปหน้าสอบสวนชัวร์
+                            args=(real_rid,) 
                         )
                 
                 with cc2: st.write(row.get('Timestamp', '-'))
@@ -213,13 +220,19 @@ def officer_dashboard():
             # กรองหาแถวที่ตรงกับ ID
             sel = df[df['Report_ID'] == sid]
             
+            # [FIX] กรณีเลขเคสหาย (ว่าง) ให้พยายามหาแถวว่างๆ ที่ตรงกัน (Fallback)
+            if sid == "" and sel.empty:
+                # ลองหาแถวที่ Report_ID เป็นค่าว่าง
+                sel = df[df['Report_ID'] == ""]
+
             if not sel.empty:
                 idx = sel.index[0]
                 row = sel.iloc[0]
                 
                 st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list)
 
-                st.markdown(f"### 📝 สอบสวนเคส: {sid}")
+                show_id = sid if sid else "(ไม่ระบุเลขที่)"
+                st.markdown(f"### 📝 สอบสวนเคส: {show_id}")
                 is_admin = user['role'] == 'admin'
 
                 with st.container(border=True):
@@ -238,8 +251,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    
                     st.write("#### ✍️ บันทึกผลการสอบสวน")
+                    
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -278,7 +291,7 @@ def officer_dashboard():
                         if not is_complete:
                             st.caption("⚠️ กรุณากรอกข้อมูลที่มีเครื่องหมาย * ให้ครบทุกช่อง เพื่อเปิดใช้งานปุ่มบันทึก")
             else:
-                st.error("ไม่พบข้อมูลเคสนี้ (อาจถูกลบไปแล้ว)")
+                st.error("ไม่พบข้อมูลเคสนี้ (อาจถูกลบไปแล้ว หรือเลขที่รับแจ้งสูญหาย)")
                 st.button("กลับ", on_click=back_to_list)
 
     except Exception as e: st.error(f"Error: {e}")
