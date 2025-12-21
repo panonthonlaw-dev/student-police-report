@@ -133,6 +133,10 @@ def back_to_list():
     st.session_state.view_mode = "list"
     st.session_state.selected_case_id = None
 
+# [FIX] Callback function เพื่อล้างค่าค้นหาอย่างปลอดภัย
+def clear_search_callback():
+    st.session_state.search_query = ""
+
 # Pagination Helper
 def get_pagination(key, total_items, limit=5):
     if key not in st.session_state: st.session_state[key] = 1
@@ -201,7 +205,6 @@ if st.session_state.current_user:
 
 # --- 5. Dashboard Logic ---
 def render_case_list(df_subset, list_type):
-    # Header List
     c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
     c1.markdown("**เลขที่รับแจ้ง**")
     c2.markdown("**วันเวลา**")
@@ -233,7 +236,7 @@ def render_case_list(df_subset, list_type):
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
+    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบจัดการ คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None
@@ -263,22 +266,25 @@ def officer_dashboard():
                     st.bar_chart(df['Status'].value_counts(), color="#1E3A8A")
 
             with tab_list:
-                # Search & Clear Button
-                c_search, c_reset = st.columns([4, 1])
-                with c_search:
-                    search_q = st.text_input("🔍 ค้นหา (เลขเคส/ชื่อ/รายละเอียด)", placeholder="พิมพ์เพื่อค้นหา...", key="search_query")
-                with c_reset:
-                    st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True) # Spacer
-                    if st.button("❌ ล้างข้อมูล", use_container_width=True):
-                        st.session_state.search_query = ""
-                        st.rerun()
+                # [FIXED] Search UI: Input + Search Button + Clear Button (Callback)
+                st.write("") # Spacer
+                c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
                 
-                # Filter Data
+                with c_search:
+                    search_q = st.text_input("ค้นหา (เลขเคส/ชื่อ/รายละเอียด)", placeholder="พิมพ์เพื่อค้นหา...", key="search_query", label_visibility="collapsed")
+                
+                with c_btn_search:
+                    st.button("🔍 ค้นหา", use_container_width=True) # ปุ่มนี้กดแล้วจะ rerun อัตโนมัติ เป็นการ trigger การค้นหา
+                
+                with c_btn_clear:
+                    # ใช้ on_click เพื่อเรียกฟังก์ชันล้างค่าก่อน render ใหม่ ทำให้ไม่ Error
+                    st.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
+                
+                # Filter Logic
                 filtered_df = df.copy()
                 if search_q:
                     filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
                 
-                # Sort Descending
                 filtered_df = filtered_df.iloc[::-1]
 
                 # Split Data
@@ -413,7 +419,7 @@ def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งความตำรวจนักเรียน</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center; color: #1E3A8A;'>   สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h5>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #1E3A8A;'>สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h5>", unsafe_allow_html=True)
     st.markdown("<h5 style='text-align: center; color: #E02424;'>ข้อมูลทุกท่านเป็นความลับจะไม่มีการเปิดเผยให้คู่กรณีทราบ</h5>", unsafe_allow_html=True)
     
     if st.session_state.submitted_id:
