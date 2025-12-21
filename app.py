@@ -405,7 +405,8 @@ def officer_dashboard():
 def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
-    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุสารวัตรนักเรียน</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งความตำรวจนักเรียน</h1>", unsafe_allow_html=True)
+    st.markdown("<h5 style='text-align: center; color: #1E3A8A;'>สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h5>", unsafe_allow_html=True)
     st.markdown("<h5 style='text-align: center; color: #E02424;'>ข้อมูลทุกท่านเป็นความลับจะไม่มีการเปิดเผยให้คู่กรณีทราบ</h5>", unsafe_allow_html=True)
     
     if st.session_state.submitted_id:
