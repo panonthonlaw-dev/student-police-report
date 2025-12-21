@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
-import pytz # สำหรับจัดการเวลาประเทศไทย
+import pytz
 import random
 import os
 from fpdf import FPDF
@@ -10,7 +10,9 @@ from fpdf import FPDF
 # --- 1. การตั้งค่าหน้าจอและเวลา ---
 st.set_page_config(page_title="ระบบสารวัตรนักเรียน", page_icon="👮‍♂️", layout="wide")
 
-# ฟังก์ชันดึงเวลาปัจจุบันของไทย
+# ชื่อไฟล์โลโก้ (ต้องตรงกับที่อัปโหลดใน GitHub)
+LOGO_FILE = "school_logo.png"
+
 def get_thailand_time():
     tz = pytz.timezone('Asia/Bangkok')
     return datetime.now(tz)
@@ -21,6 +23,8 @@ st.markdown("""
     .stDeployButton {display:none;} [data-testid="stSidebar"] {display: none;}
     .main-header { font-size: 28px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
+    /* ปรับแต่งให้รูปโลโก้หน้าเว็บอยู่ตรงกลางสวยงาม */
+    [data-testid="stImage"] { display: block; margin-left: auto; margin-right: auto; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,7 +47,7 @@ if 'current_user' not in st.session_state:
 if 'submitted_id' not in st.session_state:
     st.session_state.submitted_id = None
 
-# --- 📄 3. ฟังก์ชันสร้าง PDF (แก้ไข Error พื้นที่ และ จัด Layout ใหม่) ---
+# --- 📄 3. ฟังก์ชันสร้าง PDF (เพิ่มโลโก้) ---
 def create_pdf(row_data):
     try:
         pdf = FPDF()
@@ -54,22 +58,28 @@ def create_pdf(row_data):
             return "MISSING_FONT"
 
         pdf.add_font('ThaiFont', '', font_path)
-        
-        # ตั้งค่าความกว้างที่ใช้งานได้จริง (Effective Page Width)
         epw = pdf.w - 2 * pdf.l_margin 
         
-        # --- ส่วนที่ 1: หัวกระดาษ ---
+        # --- ส่วนที่ 1: หัวกระดาษ และ โลโก้ ---
+        # ใส่โลโก้ที่มุมซ้ายบน (x=10mm, y=8mm, ความกว้าง=25mm)
+        if os.path.exists(LOGO_FILE):
+            pdf.image(LOGO_FILE, x=10, y=8, w=25)
+        
+        # ขยับเคอร์เซอร์ลงมาเล็กน้อยเพื่อให้ข้อความหัวกระดาษไม่ทับโลโก้
+        pdf.set_y(15) 
+
         pdf.set_font('ThaiFont', '', 22)
-        pdf.cell(epw, 12, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='C')
+        # ขยับข้อความไปทางขวาเล็กน้อยเพื่อให้สมดุลกับโลโก้
+        pdf.cell(0, 12, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='C')
         pdf.set_font('ThaiFont', '', 16)
-        pdf.cell(epw, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการ", ln=True, align='C')
-        pdf.ln(2)
+        pdf.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการ", ln=True, align='C')
+        
+        pdf.ln(5)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(8)
 
         # --- ส่วนที่ 2: ข้อมูลพื้นฐาน ---
         pdf.set_font('ThaiFont', '', 15)
-        # แสดงเลขที่รับแจ้งและวันที่ในบรรทัดเดียวกัน
         pdf.cell(epw/2, 10, txt=f"เลขที่รับแจ้ง: {row_data.get('Report_ID', '-')}", ln=0)
         pdf.cell(epw/2, 10, txt=f"วันที่แจ้งเหตุ: {row_data.get('Timestamp', '-')}", ln=1, align='R')
         
@@ -81,7 +91,7 @@ def create_pdf(row_data):
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(5)
 
-        # --- ส่วนที่ 3: รายละเอียด (ใช้ epw เพื่อป้องกัน Error พื้นที่) ---
+        # --- ส่วนที่ 3: รายละเอียด ---
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(epw, 10, txt="รายละเอียดเหตุการณ์:", ln=True)
         pdf.set_font('ThaiFont', '', 14)
@@ -102,7 +112,8 @@ def create_pdf(row_data):
         # --- ส่วนที่ 5: ช่องลงนาม ---
         pdf.set_font('ThaiFont', '', 14)
         curr_y = pdf.get_y()
-        # ปรับตำแหน่งให้สมดุล
+        if curr_y > 250: pdf.add_page(); curr_y = 20;
+
         pdf.set_xy(pdf.l_margin + 5, curr_y)
         pdf.cell(80, 7, txt="ลงชื่อ..........................................................", ln=True, align='C')
         pdf.set_x(pdf.l_margin + 5)
@@ -124,6 +135,13 @@ def create_pdf(row_data):
 # --- 📋 4. หน้าจอ Dashboard เจ้าหน้าที่ ---
 def officer_dashboard():
     user = st.session_state.current_user
+    
+    # แสดงโลโก้ในหน้าเจ้าหน้าที่ (ถ้ามีไฟล์)
+    if os.path.exists(LOGO_FILE):
+        c1, c2, c3 = st.columns([3, 2, 3]) # จัดกึ่งกลาง
+        with c2:
+            st.image(LOGO_FILE, use_container_width=True)
+            
     col1, col2 = st.columns([4, 1])
     with col1:
         st.markdown(f"<div class='main-header'>🏢 ระบบจัดการ (คุณ{user['name']})</div>", unsafe_allow_html=True)
@@ -173,7 +191,7 @@ def officer_dashboard():
                         if isinstance(pdf_data, (bytes, bytearray)):
                             st.download_button("📥 พิมพ์ PDF ใบสรุปรายงาน", data=bytes(pdf_data), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True)
                         else:
-                            st.error(f"เกิดข้อผิดพลาด: {pdf_data}")
+                            st.error(f"เกิดข้อผิดพลาดในการสร้าง PDF: {pdf_data}")
             else:
                 st.warning("🔒 คุณมีสิทธิ์ชมข้อมูลเท่านั้น")
     except Exception as e:
@@ -181,6 +199,13 @@ def officer_dashboard():
 
 # --- 📝 5. หน้าจอหลัก (แจ้งเหตุ) ---
 def main_page():
+    # แสดงโลโก้ในหน้าหลัก (ถ้ามีไฟล์)
+    if os.path.exists(LOGO_FILE):
+        c1, c2, c3 = st.columns([3, 2, 3]) # ใช้ column เพื่อจัดกึ่งกลางและควบคุมขนาด
+        with c2:
+            # ปรับความกว้างตามต้องการ เช่น width=150
+            st.image(LOGO_FILE, use_container_width=True) 
+
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุสารวัตรนักเรียน</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>โรงเรียนโพนทองพัฒนาวิทยา</p>", unsafe_allow_html=True)
     
@@ -201,7 +226,6 @@ def main_page():
                 det = st.text_area("รายละเอียดเหตุการณ์ *")
                 if st.form_submit_button("📤 ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
                     if loc and det:
-                        # ใช้เวลาประเทศไทย
                         now_th = get_thailand_time()
                         rid = f"POL-{now_th.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                         df_old = conn.read(ttl=0)
