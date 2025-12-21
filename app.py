@@ -20,7 +20,7 @@ FONT_FILE = "THSarabunNew.ttf"
 def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
-# --- 2. Class PDF (แก้ปัญหา Footer และตกขอบ) ---
+# --- 2. Class PDF (ปรับ Margin และ Footer) ---
 class ReportPDF(FPDF):
     def header(self):
         if os.path.exists(FONT_FILE):
@@ -29,7 +29,7 @@ class ReportPDF(FPDF):
         
         # โลโก้
         if os.path.exists(LOGO_FILE):
-            self.image(LOGO_FILE, x=15, y=10, w=18)
+            self.image(LOGO_FILE, x=20, y=12, w=20) # ขยับ Margin ซ้ายเป็น 20
             
         # หัวกระดาษ
         self.set_y(15)
@@ -37,8 +37,8 @@ class ReportPDF(FPDF):
         self.set_font('ThaiFont', '', 16)
         self.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน", ln=True, align='C')
         self.ln(5)
-        # เส้นคั่น
-        self.line(15, self.get_y(), 195, self.get_y())
+        # เส้นคั่น (ปรับความยาวให้พอดี Margin ใหม่)
+        self.line(20, self.get_y(), 190, self.get_y())
         self.ln(8)
 
     def footer(self):
@@ -48,14 +48,13 @@ class ReportPDF(FPDF):
             self.add_font('ThaiFont', '', FONT_FILE)
             self.set_font('ThaiFont', '', 10)
         
-        # ดึงชื่อคนพิมพ์
         printer = "System"
         if 'current_user' in st.session_state and st.session_state.current_user:
             printer = st.session_state.current_user['name']
         
         now_str = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M:%S")
         
-        # พิมพ์ชิดขวา
+        # พิมพ์ชิดขวา (ใช้ w=0 เพื่อให้ชิดขอบขวาอัตโนมัติ)
         self.cell(0, 10, txt=f"พิมพ์โดย: {printer} | เวลา: {now_str} | หน้า {self.page_no()}", align='R')
 
 # --- 3. ระบบจัดการ State ---
@@ -72,6 +71,7 @@ if 'submitted_id' not in st.session_state: st.session_state.submitted_id = None
 if 'last_activity' not in st.session_state: st.session_state.last_activity = get_now_th()
 if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
 if 'selected_case_id' not in st.session_state: st.session_state.selected_case_id = None
+if 'unlock_password' not in st.session_state: st.session_state.unlock_password = ""
 
 st.markdown("""
     <style>
@@ -80,7 +80,7 @@ st.markdown("""
     .main-header { font-size: 26px; font-weight: bold; color: #1E3A8A; }
     .report-id-box { background-color: #f0f9ff; border: 2px solid #1E3A8A; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
     div[data-testid="column"] button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .locked-box { border: 1px solid #ff4b4b; padding: 15px; border-radius: 5px; background-color: #ffeaea; }
+    .locked-warning { color: #856404; background-color: #fff3cd; border-color: #ffeeba; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -111,83 +111,87 @@ if st.session_state.current_user:
     else:
         st.session_state.last_activity = get_now_th()
 
-# --- 5. ฟังก์ชัน PDF (ฉบับแก้ไข Layout) ---
+# --- 5. ฟังก์ชัน PDF (แก้ตกขอบแบบ 100%) ---
 def create_pdf(row_data):
     try:
         if not os.path.exists(FONT_FILE): return f"MISSING_FONT: ไม่พบไฟล์ {FONT_FILE}"
 
-        # ใช้ Class ใหม่ที่มี Header/Footer
-        pdf = ReportPDF() 
-        pdf.set_margins(15, 15, 15) # ขอบซ้าย 15mm, ขวา 15mm
-        pdf.set_auto_page_break(auto=True, margin=20) # เว้นล่าง 20mm กันชน Footer
+        pdf = ReportPDF()
+        # [FIX] เพิ่ม Margin ซ้ายขวาเป็น 20mm เพื่อความปลอดภัย
+        pdf.set_margins(20, 20, 20) 
+        pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
-        
-        # คำนวณความกว้างที่เขียนได้จริง (A4=210mm - margins 30mm = 180mm)
-        epw = pdf.w - 2 * pdf.l_margin
         
         pdf.add_font('ThaiFont', '', FONT_FILE)
         pdf.set_font('ThaiFont', '', 14)
         
-        # ส่วนข้อมูล
-        pdf.cell(epw * 0.6, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}")
-        pdf.cell(epw * 0.4, 8, txt=f"วันที่แจ้งเหตุ: {clean_val(row_data.get('Timestamp'))}", align='R', ln=True)
+        # [FIX] ใช้ w=0 เพื่อให้ FPDF คำนวณความกว้างถึงขอบขวาให้อัตโนมัติ (แก้ตกขอบ)
+        
+        # ส่วน Header ข้อมูล
+        # แบ่งคอลัมน์เองแบบ Manual ให้พอดีหน้า
+        # หน้ากว้าง A4 = 210mm, Margin L=20, R=20 => พื้นที่เหลือ 170mm
+        col1_w = 100 
+        col2_w = 70 
+        
+        pdf.cell(col1_w, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}")
+        pdf.cell(col2_w, 8, txt=f"วันที่แจ้งเหตุ: {clean_val(row_data.get('Timestamp'))}", align='R', ln=True)
         pdf.ln(2)
         
-        # ใช้ multi_cell กับ epw เพื่อให้ตัดบรรทัดพอดีขอบ ไม่ล้น
-        pdf.multi_cell(epw, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}")
-        pdf.multi_cell(epw, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {clean_val(row_data.get('Details'))}")
+        # [FIX] ใช้ multi_cell(0, ...) ให้ตัดบรรทัดเองเมื่อชนขอบขวา
+        pdf.multi_cell(0, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}")
+        pdf.multi_cell(0, 8, txt=f"รายละเอียดเหตุการณ์เดิม: {clean_val(row_data.get('Details'))}")
         
         pdf.ln(5)
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
         pdf.set_font('ThaiFont', '', 14)
         
-        # กล่องข้อความ
-        pdf.multi_cell(epw, 8, txt=clean_val(row_data.get('Statement')), border=1)
+        # กล่องข้อความ Statement
+        pdf.multi_cell(0, 8, txt=clean_val(row_data.get('Statement')), border=1)
         
         pdf.ln(10)
         
-        # เช็คที่เหลือ ถ้าเหลือน้อยกว่า 60mm ให้ขึ้นหน้าใหม่ก่อนเซ็นชื่อ
-        if pdf.get_y() > 230:
+        # เช็คหน้ากระดาษก่อนเซ็นชื่อ
+        if pdf.get_y() > 220:
             pdf.add_page()
 
-        # ส่วนเซ็นชื่อ (จัดกึ่งกลางคอลัมน์)
-        col_w = epw / 2
+        # ส่วนเซ็นชื่อ (คำนวณจากพื้นที่จริง 170mm / 2 = 85mm)
+        col_w = 85
         
         # Row 1
         y_start = pdf.get_y()
-        pdf.set_xy(15, y_start) # ซ้าย
+        pdf.set_xy(20, y_start) # เริ่มที่ Margin ซ้าย
         pdf.cell(col_w, 8, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_xy(15, pdf.get_y())
+        pdf.set_xy(20, pdf.get_y())
         pdf.cell(col_w, 8, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C', ln=1)
-        pdf.set_xy(15, pdf.get_y())
+        pdf.set_xy(20, pdf.get_y())
         pdf.cell(col_w, 8, txt="ผู้เสียหาย", align='C', ln=1)
         
         y_end_left = pdf.get_y()
         
-        pdf.set_xy(15 + col_w, y_start) # ขวา
+        pdf.set_xy(20 + col_w, y_start) # ขยับไปคอลัมน์ขวา
         pdf.cell(col_w, 8, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_xy(15 + col_w, pdf.get_y())
+        pdf.set_xy(20 + col_w, pdf.get_y())
         pdf.cell(col_w, 8, txt=f"( {clean_val(row_data.get('Accused'))} )", align='C', ln=1)
-        pdf.set_xy(15 + col_w, pdf.get_y())
+        pdf.set_xy(20 + col_w, pdf.get_y())
         pdf.cell(col_w, 8, txt="ผู้ถูกกล่าวหา", align='C', ln=1)
         
-        pdf.set_y(y_end_left + 5) # เว้นบรรทัด
+        pdf.set_y(y_end_left + 5)
         
         # Row 2
         y_start = pdf.get_y()
-        pdf.set_xy(15, y_start)
+        pdf.set_xy(20, y_start)
         pdf.cell(col_w, 8, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_xy(15, pdf.get_y())
+        pdf.set_xy(20, pdf.get_y())
         pdf.cell(col_w, 8, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C', ln=1)
-        pdf.set_xy(15, pdf.get_y())
+        pdf.set_xy(20, pdf.get_y())
         pdf.cell(col_w, 8, txt="ตำรวจนักเรียนผู้สอบสวน", align='C', ln=1)
         
-        pdf.set_xy(15 + col_w, y_start)
+        pdf.set_xy(20 + col_w, y_start)
         pdf.cell(col_w, 8, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_xy(15 + col_w, pdf.get_y())
+        pdf.set_xy(20 + col_w, pdf.get_y())
         pdf.cell(col_w, 8, txt=f"( {clean_val(row_data.get('Witness'))} )", align='C', ln=1)
-        pdf.set_xy(15 + col_w, pdf.get_y())
+        pdf.set_xy(20 + col_w, pdf.get_y())
         pdf.cell(col_w, 8, txt="พยาน", align='C', ln=1)
         
         pdf.ln(8)
@@ -209,6 +213,7 @@ def officer_dashboard():
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None
             st.session_state.view_mode = "list"
+            st.session_state.unlock_password = ""
             st.rerun()
 
     try:
@@ -223,7 +228,7 @@ def officer_dashboard():
             st.info("💡 **คลิกที่ปุ่มเลขที่รับแจ้ง** เพื่อเข้าไปดูรายละเอียด, แก้ไข, หรือพิมพ์ PDF")
             
             c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
-            c1.markdown("**เลขที่รับแจ้ง**")
+            c1.markdown("**เลขที่รับแจ้ง (คลิก)**")
             c2.markdown("**วันเวลา**")
             c3.markdown("**ประเภทเหตุ**")
             c4.markdown("**สถานะ**")
@@ -233,15 +238,12 @@ def officer_dashboard():
                 raw_rid = str(row.get('Report_ID', '')).strip()
                 rid_label = raw_rid if raw_rid and raw_rid.lower() not in ["nan", "none", ""] else "⚠️ ไม่พบเลข (กดดู)"
                 real_rid = raw_rid
-
                 has_result = clean_val(row.get('Statement')) != ""
                 
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                
                 with cc1:
                     btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
                     st.button(btn_label, key=f"btn_{index}", use_container_width=True, on_click=view_case, args=(real_rid,))
-                
                 with cc2: st.write(row.get('Timestamp', '-'))
                 with cc3: st.write(row.get('Incident_Type', '-'))
                 with cc4:
@@ -249,7 +251,6 @@ def officer_dashboard():
                         st.markdown(f"<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
                     else:
                         st.markdown(f"<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
-                
                 st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
 
         # --- DETAIL MODE ---
@@ -283,23 +284,42 @@ def officer_dashboard():
 
                     st.markdown("---")
                     
-                    # --- Logic ปลดล็อก ---
+                    # --- Logic การล็อกเคส ---
                     current_status = row.get('Status', 'รอดำเนินการ')
                     is_locked = False
+                    is_finished = (current_status == "จัดการแล้ว")
                     
-                    # ถ้าสถานะเป็น "จัดการแล้ว" ให้ล็อกไว้ก่อน
-                    if current_status == "จัดการแล้ว" and is_admin:
-                        is_locked = True
-                        st.warning("🔒 เคสนี้มีสถานะ 'จัดการแล้ว' การแก้ไขถูกล็อก")
-                        
-                        unlock_pass = st.text_input("🔑 ใส่รหัสแอดมินสูงสุดเพื่อแก้ไขข้อมูล", type="password")
-                        if unlock_pass == "Patwit1510":
-                            is_locked = False
-                            st.success("🔓 ปลดล็อกแล้ว สามารถแก้ไขได้")
-                    
-                    # ถ้าไม่ใช่ Admin (Viewer) ก็ล็อกตลอด
+                    # ถ้าไม่ใช่ Admin ให้ล็อกตลอด
                     if not is_admin:
                         is_locked = True
+                    # ถ้าเป็น Admin แต่เคสจบแล้ว -> ล็อก (จนกว่าจะใส่รหัสถูก)
+                    elif is_finished:
+                        is_locked = True
+                        # ถ้าเคยใส่รหัสถูกแล้วใน Session นี้ ให้ปลดล็อก
+                        if st.session_state.unlock_password == "Patwit1510":
+                            is_locked = False
+                    
+                    # แสดงข้อความแจ้งเตือนเมื่อล็อก
+                    if is_locked and is_finished and is_admin:
+                        st.markdown("""
+                            <div class='locked-warning'>
+                                🔒 <b>เคสนี้ปิดงานแล้ว (สถานะ: จัดการแล้ว)</b><br>
+                                เพื่อความปลอดภัย ข้อมูลถูกล็อกไว้ หากต้องการแก้ไขกรุณากรอกรหัสแอดมินสูงสุดด้านล่าง
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # ช่องใส่รหัสปลดล็อก
+                        col_pwd, col_btn = st.columns([3, 1])
+                        with col_pwd:
+                            pwd_input = st.text_input("🔑 รหัสผ่านปลดล็อก", type="password", key="pwd_unlock")
+                        with col_btn:
+                            if st.button("🔓 ปลดล็อก", type="primary", use_container_width=True):
+                                if pwd_input == "Patwit1510":
+                                    st.session_state.unlock_password = "Patwit1510"
+                                    st.toast("ปลดล็อกสำเร็จ!")
+                                    st.rerun()
+                                else:
+                                    st.error("รหัสผิด")
 
                     st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
                     f1, f2 = st.columns(2)
@@ -316,7 +336,7 @@ def officer_dashboard():
                     
                     v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=is_locked)
 
-                    if is_admin and not is_locked:
+                    if not is_locked:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
                         if st.button("💾 บันทึกข้อมูล", type="secondary", use_container_width=True, disabled=not is_complete):
                             df.at[idx, 'Victim'] = v_vic; df.at[idx, 'Accused'] = v_acc
@@ -325,26 +345,31 @@ def officer_dashboard():
                             df.at[idx, 'Statement'] = v_stmt; df.at[idx, 'Handled_By'] = user['name']
                             conn.update(data=df)
                             st.toast("✅ บันทึกเรียบร้อย!"); st.success("บันทึกสำเร็จ!")
+                            # รีเซ็ตรหัสผ่านหลังบันทึกเสร็จ เพื่อล็อกใหม่
+                            st.session_state.unlock_password = "" 
                             time.sleep(1.5); st.rerun()
                         if not is_complete: st.caption("⚠️ กรอกข้อมูล (*) ให้ครบเพื่อบันทึก")
 
-                    # --- ส่วนแสดงปุ่มพิมพ์ PDF (อยู่ล่างสุด) ---
+                    # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงตลอดเวลา) ---
                     st.markdown("---")
                     st.write("#### 📄 เอกสาร")
                     
-                    pdf_bytes = create_pdf(row)
+                    has_stmt = clean_val(row.get('Statement')) != ""
+                    pdf_data = create_pdf(row)
                     
-                    if isinstance(pdf_bytes, (bytes, bytearray)):
+                    if isinstance(pdf_data, (bytes, bytearray)):
+                        label = "🖨️ พิมพ์เอกสาร (PDF)" if has_stmt else "🖨️ พิมพ์แบบฟอร์มเปล่า (ยังไม่บันทึกผล)"
+                        btn_type = "primary" if has_stmt else "secondary"
                         st.download_button(
-                            label="🖨️ พิมพ์เอกสาร (PDF)",
-                            data=bytes(pdf_bytes),
+                            label=label,
+                            data=bytes(pdf_data),
                             file_name=f"Report_{sid}.pdf",
                             mime="application/pdf",
                             use_container_width=True,
-                            type="primary"
+                            type=btn_type
                         )
                     else:
-                        st.error(f"❌ {pdf_bytes}")
+                        st.error(f"❌ ไม่สามารถสร้าง PDF: {pdf_data}")
 
             else:
                 st.error("ไม่พบข้อมูล"); st.button("กลับ", on_click=back_to_list)
