@@ -275,9 +275,7 @@ def officer_dashboard():
                 filtered_df = filtered_df.iloc[::-1]
 
                 # Split Data
-                # Pending: Statement is empty
                 df_pending = filtered_df[filtered_df['Statement'].apply(clean_val) == ""]
-                # Finished: Statement is NOT empty
                 df_finished = filtered_df[filtered_df['Statement'].apply(clean_val) != ""]
 
                 # --- Section 1: Pending ---
@@ -285,7 +283,6 @@ def officer_dashboard():
                 start_p, end_p, curr_p, tot_p = get_pagination('page_pending', len(df_pending), 5)
                 render_case_list(df_pending.iloc[start_p:end_p], "pending")
                 
-                # Pagination Buttons Pending
                 if tot_p > 1:
                     cp1, cp2, cp3 = st.columns([1, 2, 1])
                     with cp1: 
@@ -301,7 +298,6 @@ def officer_dashboard():
                 start_f, end_f, curr_f, tot_f = get_pagination('page_finished', len(df_finished), 5)
                 render_case_list(df_finished.iloc[start_f:end_f], "finished")
 
-                # Pagination Buttons Finished
                 if tot_f > 1:
                     cf1, cf2, cf3 = st.columns([1, 2, 1])
                     with cf1: 
@@ -374,8 +370,7 @@ def officer_dashboard():
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
                         v_stu = st.text_input("ตำรวจนักเรียน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
-                        curr = row.get('Status', 'รอดำเนินการ')
-                        idx_stat = opts.index(curr) if curr in opts else 0
+                        idx_stat = opts.index(current_status) if current_status in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_stat, disabled=is_locked)
                     
                     v_stmt = st.text_area("บันทึกผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=is_locked)
@@ -411,6 +406,7 @@ def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุสารวัตรนักเรียน</h1>", unsafe_allow_html=True)
+    st.markdown("<h5 style='text-align: center; color: #E02424;'>ข้อมูลทุกท่านเป็นความลับจะไม่มีการเปิดเผยให้คู่กรณีทราบ</h5>", unsafe_allow_html=True)
     
     if st.session_state.submitted_id:
         st.markdown(f"<div class='report-id-box'><h2>ส่งข้อมูลสำเร็จ!</h2><p>เลขรับแจ้ง: <b>{st.session_state.submitted_id}</b></p></div>", unsafe_allow_html=True)
