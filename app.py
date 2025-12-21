@@ -233,7 +233,7 @@ def render_case_list(df_subset, list_type):
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบจัดการ คุณ{user['name']}</div>", unsafe_allow_html=True)
+    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None
@@ -263,8 +263,15 @@ def officer_dashboard():
                     st.bar_chart(df['Status'].value_counts(), color="#1E3A8A")
 
             with tab_list:
-                # Search
-                search_q = st.text_input("🔍 ค้นหา (เลขเคส/ชื่อ/รายละเอียด)", placeholder="พิมพ์เพื่อค้นหา...")
+                # Search & Clear Button
+                c_search, c_reset = st.columns([4, 1])
+                with c_search:
+                    search_q = st.text_input("🔍 ค้นหา (เลขเคส/ชื่อ/รายละเอียด)", placeholder="พิมพ์เพื่อค้นหา...", key="search_query")
+                with c_reset:
+                    st.markdown('<div style="height: 28px;"></div>', unsafe_allow_html=True) # Spacer
+                    if st.button("❌ ล้างข้อมูล", use_container_width=True):
+                        st.session_state.search_query = ""
+                        st.rerun()
                 
                 # Filter Data
                 filtered_df = df.copy()
@@ -406,7 +413,7 @@ def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งความตำรวจนักเรียน</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center; color: #1E3A8A;'>สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h5>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #1E3A8A;'>   สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h5>", unsafe_allow_html=True)
     st.markdown("<h5 style='text-align: center; color: #E02424;'>ข้อมูลทุกท่านเป็นความลับจะไม่มีการเปิดเผยให้คู่กรณีทราบ</h5>", unsafe_allow_html=True)
     
     if st.session_state.submitted_id:
