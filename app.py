@@ -155,23 +155,17 @@ def officer_dashboard():
 
             for index, row in df.iloc[::-1].iterrows():
                 raw_rid = str(row.get('Report_ID', '')).strip()
-                if raw_rid and raw_rid.lower() not in ["nan", "none", ""]:
-                    rid_label = raw_rid # แสดงแค่เลขเพียวๆ หรือจะใส่ icon ก็ได้
-                    real_rid = raw_rid
-                else:
-                    rid_label = "⚠️ ไม่พบเลข (กดดู)"
-                    real_rid = raw_rid
+                rid_label = raw_rid if raw_rid and raw_rid.lower() not in ["nan", "none", ""] else "⚠️ ไม่พบเลข (กดดู)"
+                real_rid = raw_rid
 
                 has_result = clean_val(row.get('Statement')) != ""
                 
                 cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
                 
                 with cc1:
-                    # **เปลี่ยนใหม่: ทุกปุ่มกดแล้วไปหน้า view_case ทั้งหมด**
-                    # แต่ถ้าจบแล้ว อาจจะเปลี่ยนสีปุ่มหรือใส่ icon ให้รู้
-                    btn_label = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
+                    # ปุ่มเดียวกดเข้าไปดูได้หมด (ตามที่ขอ "ให้แสดงเลขเคสต่อไปตลอด")
                     st.button(
-                        btn_label, 
+                        f"📝 {rid_label}", 
                         key=f"btn_{index}", 
                         use_container_width=True,
                         on_click=view_case, 
@@ -182,9 +176,9 @@ def officer_dashboard():
                 with cc3: st.write(row.get('Incident_Type', '-'))
                 with cc4:
                     if has_result:
-                        st.markdown(f"<span style='color:green;font-weight:bold'>เรียบร้อย</span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<span style='color:orange;font-weight:bold'>รอสอบสวน</span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
                 
                 st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
 
@@ -202,6 +196,35 @@ def officer_dashboard():
                 st.markdown(f"### 📝 รายละเอียดเคส: {sid if sid else '(ไม่มีเลข)'}")
                 is_admin = user['role'] == 'admin'
 
+                # --- ส่วนแสดงปุ่มพิมพ์ PDF (แสดงด้านบนด้วยเผื่ออยากกดเลย) ---
+                has_stmt = clean_val(row.get('Statement')) != ""
+                if has_stmt:
+                    st.success("✅ เคสนี้บันทึกผลการสอบสวนแล้ว พร้อมพิมพ์เอกสาร")
+                    # สร้าง PDF
+                    pdf_bytes = create_pdf(row)
+                    if isinstance(pdf_bytes, (bytes, bytearray)):
+                        st.download_button(
+                            label="🖨️ พิมพ์เอกสาร (PDF)",
+                            data=bytes(pdf_bytes),
+                            file_name=f"Report_{sid}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            type="primary", # สีแดง/ส้มเด่นๆ
+                            help="คลิกเพื่อดาวน์โหลดไฟล์ PDF สำหรับสั่งพิมพ์"
+                        )
+                else:
+                    st.warning("⚠️ ยังไม่มีการบันทึกผลการสอบสวน (PDF จะเป็นแบบฟอร์มเปล่า)")
+                    # ปุ่ม PDF แบบเปล่า (เผื่ออยากพิมพ์ไปเขียนมือ)
+                    pdf_bytes = create_pdf(row)
+                    if isinstance(pdf_bytes, (bytes, bytearray)):
+                         st.download_button(
+                            label="🖨️ พิมพ์แบบฟอร์มเปล่า (PDF)",
+                            data=bytes(pdf_bytes),
+                            file_name=f"Form_{sid}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+
                 with st.container(border=True):
                     c1, c2 = st.columns([2, 1])
                     with c1:
@@ -218,26 +241,8 @@ def officer_dashboard():
                         else: st.caption("ไม่มีรูปภาพแนบ")
 
                     st.markdown("---")
-                    
-                    # ตรวจสอบว่ามีผลสอบสวนไหม
-                    has_stmt = clean_val(row.get('Statement')) != ""
-                    
-                    # ถ้ามีผลแล้ว แสดงปุ่ม PDF ตรงนี้เลย
-                    if has_stmt:
-                        st.success("✅ เคสนี้มีการบันทึกผลการสอบสวนแล้ว")
-                        pdf_data = create_pdf(row)
-                        if isinstance(pdf_data, (bytes, bytearray)):
-                            st.download_button(
-                                label="📥 ดาวน์โหลด PDF (พิมพ์เอกสาร)",
-                                data=bytes(pdf_data),
-                                file_name=f"Report_{sid}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True,
-                                type="primary"
-                            )
-                        st.markdown("---")
-
                     st.write("#### ✍️ บันทึก/แก้ไข ผลการสอบสวน")
+                    
                     f1, f2 = st.columns(2)
                     with f1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=not is_admin)
@@ -246,16 +251,17 @@ def officer_dashboard():
                     with f2:
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=not is_admin)
                         v_stu = st.text_input("ตำรวจนักเรียนสอบสวน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=not is_admin)
+                        
+                        current_status = row.get('Status', 'รอดำเนินการ')
                         opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
-                        curr = row.get('Status', 'รอดำเนินการ')
-                        idx_stat = opts.index(curr) if curr in opts else 0
+                        idx_stat = opts.index(current_status) if current_status in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_stat, disabled=not is_admin)
                     
                     v_stmt = st.text_area("บันทึกคำให้การ/ผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=not is_admin)
 
                     if is_admin:
                         is_complete = all([v_vic, v_acc, v_wit, v_tea, v_stu, v_stmt])
-                        if st.button("💾 บันทึกข้อมูล", type="primary", use_container_width=True, disabled=not is_complete):
+                        if st.button("💾 บันทึกข้อมูล", type="secondary", use_container_width=True, disabled=not is_complete):
                             df.at[idx, 'Victim'] = v_vic; df.at[idx, 'Accused'] = v_acc
                             df.at[idx, 'Witness'] = v_wit; df.at[idx, 'Teacher_Investigator'] = v_tea
                             df.at[idx, 'Student_Police_Investigator'] = v_stu; df.at[idx, 'Status'] = v_sta
