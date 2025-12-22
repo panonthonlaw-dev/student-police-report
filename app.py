@@ -19,27 +19,41 @@ import glob
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ระบบค้นหา Logo และ Font อัตโนมัติ ---
-def find_file(filename_no_ext, extensions):
-    # หาไฟล์ที่มีชื่อต้นเหมือนกัน แต่มีนามสกุลต่างๆ
-    for ext in extensions:
-        fname = f"{filename_no_ext}.{ext}"
-        if os.path.exists(fname): return fname
-    # หาแบบ wildcard
-    files = glob.glob(f"{filename_no_ext}*")
-    for f in files:
-        if f.lower().endswith(tuple(['.'+e for e in extensions])):
-            return f
-    return None
+# --- ตั้งค่า Path และค้นหาไฟล์ที่จำเป็น ---
+# หาตำแหน่งที่อยู่ของไฟล์ app.py เพื่อใช้เป็น Base Path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ค้นหา Logo (png, jpg, jpeg)
-LOGO_FILE = find_file("school_logo", ["png", "jpg", "jpeg", "bmp"])
-FONT_FILE = "THSarabunNew.ttf"
+# กำหนด Path เต็มของไฟล์ฟอนต์
+FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
+
+# ตัวแปรสำหรับเก็บ Path และ Format ของโลโก้
+LOGO_FILE = None
+LOGO_FORMAT = None
+
+def find_and_process_logo():
+    """ค้นหาไฟล์โลโก้และตรวจสอบประเภทไฟล์"""
+    global LOGO_FILE, LOGO_FORMAT
+    # ค้นหาไฟล์ที่ขึ้นต้นด้วย 'school_logo' ทั้งหมดในโฟลเดอร์เดียวกัน
+    candidates = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            try:
+                # ลองเปิดไฟล์ด้วย PIL เพื่อเช็คว่าเป็นรูปภาพหรือไม่ และหา Format
+                with Image.open(candidate) as img:
+                    LOGO_FILE = candidate
+                    LOGO_FORMAT = img.format  # เช่น 'PNG', 'JPEG'
+                    return # เจอไฟล์ที่ใช้ได้แล้ว ออกจากฟังก์ชัน
+            except:
+                continue # ถ้าเปิดไม่ได้ให้ลองไฟล์ถัดไป
+
+# เรียกฟังก์ชันค้นหาโลโก้
+find_and_process_logo()
+
 
 # รายชื่อสถานที่
 LOCATION_OPTIONS = [
     "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
-    "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
+    "หอประชุมเทาทอง", "หอประชุมไทรทอง",
     "อาคารไฟฟ้าสนามฟุตบอล", "สนามบาส", "โรงอาหาร", "สนามปิงปอง",
     "สวนหลังห้องปกครอง", "สวนสนามเปตอง", "สวนเกษตร", "สวนหลังไทรทอง",
     "ห้องน้ำโรงอาหารติดอาคาร 4", "ห้องน้ำโรงอาหารติดประตูโรงอาหาร",
@@ -69,82 +83,100 @@ def process_image(img_file):
 
 # --- 2. Class PDF ---
 class ReportPDF(FPDF):
-    def header(self):
-        # โหลดฟอนต์
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # [แก้ไข] โหลดฟอนต์ครั้งเดียวตอนสร้าง Object และใช้ Path เต็ม
         if os.path.exists(FONT_FILE):
-            try:
-                self.add_font('ThaiFont', '', FONT_FILE, uni=True)
-                self.set_font('ThaiFont', '', 20)
-            except: pass
+            # ไม่ใส่ try-except เพื่อให้รู้ถ้าฟอนต์มีปัญหา
+            self.add_font('ThaiFont', '', FONT_FILE, uni=True)
         else:
+            print(f"Warning: Font file not found at {FONT_FILE}")
+
+    def header(self):
+        # ตั้งค่าฟอนต์สำหรับส่วนหัว
+        try:
+            self.set_font('ThaiFont', '', 20)
+        except RuntimeError:
+            # ถ้าโหลดฟอนต์ไทยไม่สำเร็จ ให้ใช้ Arial แทน (จะแสดงไทยไม่ได้)
             self.set_font('Arial', '', 20)
 
-        # วางโลโก้
-        if LOGO_FILE and os.path.exists(LOGO_FILE):
+        # [แก้ไข] วางโลโก้โดยระบุประเภทไฟล์ชัดเจน
+        if LOGO_FILE:
             try:
-                self.image(LOGO_FILE, x=15, y=10, w=25)
-            except: pass
-        
+                # x=15, y=10, w=25, ระบุ type เพื่อช่วย FPDF กรณีไม่มีนามสกุลไฟล์
+                self.image(LOGO_FILE, x=15, y=10, w=25, type=LOGO_FORMAT)
+            except Exception as e:
+                print(f"Error loading logo: {e}")
+
         # Watermark
         try:
             self.set_font_size(40)
             self.set_text_color(240, 240, 240)
             self.set_xy(50, 100)
             self.cell(0, 0, txt="เอกสารลับ - Confidential", align='C')
-            self.set_text_color(0, 0, 0)
+            self.set_text_color(0, 0, 0) # รีเซ็ตสีกลับ
         except: pass
 
         self.set_y(15)
         self.set_x(45)
-        if os.path.exists(FONT_FILE): self.set_font('ThaiFont', '', 20)
-        else: self.set_font('Arial', '', 20)
-        
+        # รีเซ็ตฟอนต์และขนาดสำหรับข้อความหัวกระดาษ
+        try:
+             self.set_font('ThaiFont', '', 20)
+        except:
+             self.set_font('Arial', '', 20)
+
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
-        
+
         self.set_font_size(16)
         self.set_x(45)
         self.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน", ln=True, align='L')
-        
+
         self.ln(10)
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(5)
 
     def footer(self):
         self.set_y(-15)
-        if os.path.exists(FONT_FILE):
+        try:
             self.set_font('ThaiFont', '', 10)
-        else:
+        except:
             self.set_font('Arial', '', 8)
-        
+
         printer = "System"
         if 'current_user' in st.session_state and st.session_state.current_user:
             printer = st.session_state.current_user['name']
         now_str = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M:%S")
-        
+
         self.set_x(10)
         self.cell(0, 10, txt=f"พิมพ์โดย: {printer} | เวลา: {now_str} | หน้า {self.page_no()}", align='R')
 
-# --- ฟังก์ชันสร้าง PDF (จัดหน้าใหม่ แก้ปัญหาตัวอักษรแตก) ---
+# --- ฟังก์ชันสร้าง PDF ---
 def create_pdf(row_data):
     tmp_path = None
     try:
         # 1. เคลียร์ Cache ฟอนต์เก่า
-        for pkl_file in glob.glob("*.pkl"):
+        for pkl_file in glob.glob(os.path.join(BASE_DIR, "*.pkl")):
             try: os.remove(pkl_file)
             except: pass
 
-        # 2. ตรวจสอบฟอนต์
-        if not os.path.exists(FONT_FILE): 
-            return b"ERROR: FONT_MISSING"
+        # 2. ตรวจสอบฟอนต์ก่อนเริ่มสร้าง PDF
+        if not os.path.exists(FONT_FILE):
+            return b"ERROR: FONT_MISSING_THSarabunNew.ttf"
 
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
         pdf.set_auto_page_break(True, margin=20)
         pdf.add_page()
-        
+
         epw = pdf.w - 2 * pdf.l_margin
-        pdf.add_font('ThaiFont', '', FONT_FILE, uni=True)
-        
+
+        # ตั้งค่าฟอนต์สำหรับเนื้อหา
+        try:
+            pdf.set_font('ThaiFont', '', 14)
+        except:
+             # ถ้าฟอนต์มีปัญหา จะส่ง Error กลับไป
+             return b"ERROR: FONT_LOAD_FAILED"
+
         # QR Code
         rid_text = clean_val(row_data.get('Report_ID'))
         try:
@@ -155,36 +187,33 @@ def create_pdf(row_data):
             pdf.image(qr_buffer, x=170, y=10, w=25, type='PNG')
         except: pass
 
-        # ส่วนที่ 1: ข้อมูลเบื้องต้น (ใช้ Cell แทน Multi_cell เพื่อแก้ปัญหาตัวอักษรตั้งแถว)
-        pdf.set_font('ThaiFont', '', 14)
+        # ส่วนที่ 1: ข้อมูลเบื้องต้น (ใช้ Cell เพื่อจัดระเบียบ)
         pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {rid_text}", ln=0)
         pdf.cell(epw*0.4, 8, txt=f"วันที่แจ้ง: {clean_val(row_data.get('Timestamp'))}", ln=1, align='R')
         pdf.ln(10)
-        
-        # แสดงข้อมูลเป็นบรรทัด (ใช้ Cell จะไม่แตกแถว)
+
+        # แสดงข้อมูลเป็นบรรทัด
         pdf.cell(epw, 8, txt=f"ผู้แจ้ง: {clean_val(row_data.get('Reporter'))}", ln=1)
         pdf.cell(epw, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))}", ln=1)
         pdf.cell(epw, 8, txt=f"สถานที่: {clean_val(row_data.get('Location'))}", ln=1)
         pdf.ln(2)
 
-        # ส่วนรายละเอียด (แยกหัวข้อออกมา เพื่อความสวยงาม)
+        # ส่วนรายละเอียด
         pdf.set_fill_color(245, 245, 245)
-        pdf.cell(epw, 8, txt="รายละเอียดเหตุการณ์:", border='LTR', fill=True, ln=1) # หัวข้อมีขอบบนซ้ายขวา
-        
-        # เนื้อหา (จำเป็นต้องใช้ Multi_cell สำหรับข้อความยาว แต่แยกออกมาแล้วจะดูดีขึ้น)
+        pdf.cell(epw, 8, txt="รายละเอียดเหตุการณ์:", border='LTR', fill=True, ln=1)
         details = clean_val(row_data.get('Details'))
-        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True) # เนื้อหามีขอบล่างซ้ายขวา
+        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True)
         pdf.ln(5)
-        
+
         # ส่วนที่ 2: ผลการสอบสวน
         pdf.set_font_size(16)
         pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
         pdf.set_font_size(14)
-        
+
         statement_text = clean_val(row_data.get('Statement'))
         if not statement_text: statement_text = "-"
         pdf.multi_cell(epw, 7, txt=statement_text, border=1)
-        
+
         # รูปหลักฐาน
         ev_img = clean_val(row_data.get('Evidence_Image'))
         if ev_img:
@@ -199,30 +228,30 @@ def create_pdf(row_data):
         # ส่วนที่ 3: ลายมือชื่อ
         pdf.ln(10)
         if pdf.get_y() > 230: pdf.add_page()
-        
+
         col_w = epw / 2
         y1 = pdf.get_y()
-        
+
         # แถว 1
         pdf.set_xy(20, y1)
         pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=2)
         pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C', ln=2)
         pdf.cell(col_w, 6, txt="ผู้เสียหาย", align='C', ln=0)
-        
+
         pdf.set_xy(20 + col_w, y1)
         pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=2)
         pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Accused'))} )", align='C', ln=2)
         pdf.cell(col_w, 6, txt="ผู้ถูกกล่าวหา", align='C', ln=0)
-        
+
         pdf.ln(20)
         y2 = pdf.get_y()
-        
+
         # แถว 2
         pdf.set_xy(20, y2)
         pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=2)
         pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C', ln=2)
         pdf.cell(col_w, 6, txt="ตำรวจนักเรียนผู้สอบสวน", align='C', ln=0)
-        
+
         pdf.set_xy(20 + col_w, y2)
         pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=2)
         pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Witness'))} )", align='C', ln=2)
@@ -239,13 +268,13 @@ def create_pdf(row_data):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             pdf.output(tmp.name, 'F')
             tmp_path = tmp.name
-        
+
         with open(tmp_path, 'rb') as f:
             pdf_bytes = f.read()
-            
+
         try: os.remove(tmp_path)
         except: pass
-            
+
         return pdf_bytes
 
     except Exception as e:
@@ -313,7 +342,7 @@ def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
     with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
-    with col_h2: 
+    with col_h2:
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
 
@@ -324,18 +353,18 @@ def officer_dashboard():
 
         if st.session_state.view_mode == "list":
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
-            
+
             with tab_list:
                 c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
                 with c_search:
                     search_q = st.text_input("ค้นหา", placeholder="เลขเคส, ชื่อ, หรือเหตุการณ์...", key="search_query", label_visibility="collapsed")
                 with c_btn_search: st.button("🔍 ค้นหา", use_container_width=True)
                 with c_btn_clear: st.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
-                
+
                 filtered_df = df.copy()
                 if search_q:
                     filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
-                
+
                 df_pending = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
                 df_finished = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
 
@@ -344,12 +373,12 @@ def officer_dashboard():
                 render_case_list(df_pending.iloc[start_p:end_p], "pending")
                 if tot_p > 1:
                     cp1, cp2, cp3 = st.columns([1, 2, 1])
-                    with cp1: 
-                        if st.button("⬅️ ย้อนกลับ (รอ)", key="btn_prev_pending", disabled=(curr_p==1)): 
+                    with cp1:
+                        if st.button("⬅️ ย้อนกลับ (รอ)", key="btn_prev_pending", disabled=(curr_p==1)):
                             st.session_state.page_pending -= 1; st.rerun()
                     with cp2: st.markdown(f"<div style='text-align:center; font-weight:bold; color:#555;'>หน้า {curr_p} / {tot_p}</div>", unsafe_allow_html=True)
-                    with cp3: 
-                        if st.button("ถัดไป (รอ) ➡️", key="btn_next_pending", disabled=(curr_p==tot_p)): 
+                    with cp3:
+                        if st.button("ถัดไป (รอ) ➡️", key="btn_next_pending", disabled=(curr_p==tot_p)):
                             st.session_state.page_pending += 1; st.rerun()
 
                 st.markdown("---")
@@ -358,12 +387,12 @@ def officer_dashboard():
                 render_case_list(df_finished.iloc[start_f:end_f], "finished")
                 if tot_f > 1:
                     cf1, cf2, cf3 = st.columns([1, 2, 1])
-                    with cf1: 
-                        if st.button("⬅️ ย้อนกลับ (เสร็จ)", key="btn_prev_finished", disabled=(curr_f==1)): 
+                    with cf1:
+                        if st.button("⬅️ ย้อนกลับ (เสร็จ)", key="btn_prev_finished", disabled=(curr_f==1)):
                             st.session_state.page_finished -= 1; st.rerun()
                     with cf2: st.markdown(f"<div style='text-align:center; font-weight:bold; color:#555;'>หน้า {curr_f} / {tot_f}</div>", unsafe_allow_html=True)
-                    with cf3: 
-                        if st.button("ถัดไป (เสร็จ) ➡️", key="btn_next_finished", disabled=(curr_f==tot_f)): 
+                    with cf3:
+                        if st.button("ถัดไป (เสร็จ) ➡️", key="btn_next_finished", disabled=(curr_f==tot_f)):
                             st.session_state.page_finished += 1; st.rerun()
 
             with tab_dash:
@@ -374,7 +403,7 @@ def officer_dashboard():
                         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                             df.to_excel(writer, index=False, sheet_name='ReportData')
                         st.download_button(label="ดาวน์โหลดไฟล์ Excel", data=buffer, file_name=f"Report_Export_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
-                
+
                 if not df.empty:
                     total_cases = len(df)
                     top_loc = df['Location'].mode()[0] if not df['Location'].mode().empty else "-"
@@ -407,7 +436,7 @@ def officer_dashboard():
                     with col2:
                         st.markdown("**🔹 กราฟแท่ง: สถิติสถานที่เกิดเหตุ**")
                         st.bar_chart(df['Location'].value_counts(), color="#1E3A8A")
-                    
+
                     st.markdown("---")
                     st.subheader("📈 สถิติเชิงลึก (Advanced Analytics)")
                     df['datetime'] = pd.to_datetime(df['Timestamp'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
@@ -435,7 +464,7 @@ def officer_dashboard():
                 idx = sel.index[0]
                 row = sel.iloc[0]
                 st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list)
-                
+
                 current_status = clean_val(row.get('Status'))
                 is_admin = user.get('role') == 'admin'
                 is_finished = (current_status == "ดำเนินการเรียบร้อย")
@@ -451,7 +480,7 @@ def officer_dashboard():
 
                     st.markdown("---")
                     st.write("#### ✍️ บันทึกผลการสอบสวน")
-                    
+
                     if is_locked and is_finished and is_admin:
                         st.markdown("<div style='color:red;'>🔒 เคสนี้ดำเนินการเรียบร้อยแล้ว (ใช้รหัสเจ้าหน้าที่ระดับสูงสุด)</div>", unsafe_allow_html=True)
                         cpwd, cbtn = st.columns([3, 1])
@@ -467,9 +496,9 @@ def officer_dashboard():
                     with c2:
                         v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=is_locked)
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
-                    
+
                     v_stmt = st.text_area("ผลการดำเนินการสอบสวน *", value=clean_val(row.get('Statement')), disabled=is_locked)
-                    
+
                     ev_img_file = st.file_uploader("📸 แนบรูปหลักฐานการสอบสวนเพิ่มเติม", type=['jpg','png'], disabled=is_locked)
                     if clean_val(row.get('Evidence_Image')):
                         st.image(base64.b64decode(row['Evidence_Image']), width=200, caption="รูปหลักฐานปัจจุบัน")
@@ -482,7 +511,7 @@ def officer_dashboard():
                             final_img = process_image(ev_img_file) if ev_img_file else row.get('Evidence_Image')
                             new_log = f"[{get_now_th().strftime('%d/%m/%Y %H:%M')}] แก้ไขโดย {user['name']}"
                             old_log = clean_val(row.get('Audit_Log'))
-                            
+
                             df.at[idx, 'Victim'] = v_vic
                             df.at[idx, 'Accused'] = v_acc
                             df.at[idx, 'Witness'] = v_wit
@@ -505,7 +534,7 @@ def officer_dashboard():
                             st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF (ประกอบด้วยข้อมูลผู้แจ้ง, รายละเอียด, และผลการสอบสวน)")
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
-                            
+
                             # ตรวจสอบว่าเป็น Error Message แบบ Bytes หรือไม่
                             if isinstance(pdf_bytes, bytes) and pdf_bytes.startswith(b"ERROR"):
                                 err_msg = pdf_bytes.decode('utf-8', errors='ignore')
@@ -521,7 +550,7 @@ def officer_dashboard():
                                     type="primary",
                                     use_container_width=True
                                 )
-                    
+
                     with st.expander("📜 ดูประวัติการแก้ไข (Audit Trail)"):
                         st.text(row.get('Audit_Log', 'ไม่มีประวัติ'))
 
@@ -529,12 +558,14 @@ def officer_dashboard():
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
+    # แสดงโลโก้หน้าแรก (ถ้าเจอไฟล์)
     if LOGO_FILE and os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
+
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
-    
+
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
-    
+
     with tab1:
         with st.form("report_form"):
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
@@ -542,7 +573,7 @@ def main_page():
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
             det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *"))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
-            
+
             st.markdown("---")
             pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บรวบรวมข้อมูลเพื่อใช้ในการดำเนินงานของสถานีตำรวจนักเรียนและข้อมูลท่านจะไม่ถูกเปิดเผยต่อคู่กรณี")
             st.markdown("""
@@ -551,7 +582,7 @@ def main_page():
                     <span style='color: #c62828; font-size: 0.9em;'>* การแจ้งเหตุนี้ไม่ใช่การแจ้งความที่มีผลเท่าการแจ้งความต่อเจ้าหน้าที่ตำรวจตามกฎหมายอาญา</span>
                 </div>
             """, unsafe_allow_html=True)
-            
+
             if st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
                 if not pdpa_check:
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
@@ -569,7 +600,7 @@ def main_page():
         st.subheader("🔍 ตรวจสอบสถานะการดำเนินงาน")
         st.markdown("กรอก **เลข 4 ตัวท้าย** ของรหัสรับแจ้ง (เช่น 5929) เพื่อตรวจสอบสถานะ")
         search_code = sanitize_input(st.text_input("เลข 4 ตัวท้าย", max_chars=4, placeholder="ตัวอย่าง: 5929"))
-        
+
         if st.button("🔎 ค้นหา", use_container_width=True):
             if len(search_code) == 4 and search_code.isdigit():
                 try:
@@ -577,7 +608,7 @@ def main_page():
                     df = df.fillna("")
                     df['Report_ID'] = df['Report_ID'].astype(str)
                     match = df[df['Report_ID'].str.endswith(search_code)]
-                    
+
                     if not match.empty:
                         for idx, row in match.iterrows():
                             with st.container(border=True):
