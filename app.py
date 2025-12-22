@@ -32,14 +32,22 @@ LOCATION_OPTIONS = [
 def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
-# ฟังก์ชันย่อรูปภาพ
+# ฟังก์ชันย่อรูปภาพ (แก้ไข: ปรับลดขนาดและ Quality เพื่อไม่ให้เกิน Limit ของ Google Sheets)
 def process_image(img_file):
     if img_file is None: return ""
     try:
         img = Image.open(img_file)
-        img.thumbnail((500, 500))
+        # แปลงเป็น RGB เสมอ เพื่อลดขนาดและป้องกัน Error จากไฟล์ PNG แบบโปร่งใส
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+            
+        # ลดขนาดลงจาก 500 เหลือ 350 เพื่อความปลอดภัยของเนื้อที่ Cell
+        img.thumbnail((350, 350))
+        
         buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=75)
+        # ลด Quality เหลือ 60 และเปิด optimize=True เพื่อบีบอัดสูงสุด
+        img.save(buffer, format="JPEG", quality=60, optimize=True)
+        
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
