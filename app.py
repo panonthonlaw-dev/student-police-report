@@ -614,7 +614,7 @@ def main_page():
     with tab1:
         with st.form("report_form"):
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
-            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
+            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มแอลกอฮอ", "พกอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "บูลลี่/ด่าบนโลกออนไลน์", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
             det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *"))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
