@@ -1,6 +1,6 @@
 streamlit
-st-gsheets-connection
+streamlit-gsheets
 pandas
-fpdf2
-requests
 pytz
+fpdf
+Pillow
