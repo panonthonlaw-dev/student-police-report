@@ -229,7 +229,6 @@ def officer_dashboard():
             st.rerun()
 
     try:
-        # [FIX 429] ใช้ ttl="1m" เพื่อลดการเรียก API บ่อยเกินไป
         df = conn.read(ttl="1m")
         df.columns = df.columns.str.strip()
         df = df.fillna("")
@@ -274,23 +273,67 @@ def officer_dashboard():
                     st.write(f"**ผู้แจ้ง:** {row.get('Reporter', '-')}")
                     st.info(f"**รายละเอียด:** {row.get('Details', '-')}")
                     
+                    # --- [RESTORATION] ระบบ Lock และสิทธิ์ ---
+                    is_admin = user.get('role', 'viewer') == 'admin'
+                    current_status = clean_val(row.get('Status', 'รอดำเนินการ'))
+                    
+                    # ปรับคำ Status ใหม่
+                    STATUS_OPTIONS = ["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"]
+                    # Map ค่าเดิมให้เข้ากับค่าใหม่ (เผื่อข้อมูลเก่า)
+                    if current_status == "กำลังจัดการ": current_status = "อยู่ระหว่างการดำเนินการ"
+                    elif current_status == "จัดการแล้ว": current_status = "ดำเนินการเรียบร้อย"
+                    
+                    is_finished = (current_status == "ดำเนินการเรียบร้อย")
+                    is_locked = False
+                    
+                    if not is_admin: is_locked = True
+                    elif is_finished:
+                        is_locked = True
+                        if st.session_state.unlock_password == "Patwit1510": is_locked = False
+                    
+                    # UI ปลดล็อค
+                    if is_locked and is_finished and is_admin:
+                        st.markdown("<div class='locked-warning'>🔒 เคสปิดงานแล้ว (ใส่รหัสแอดมินเพื่อแก้ไข)</div>", unsafe_allow_html=True)
+                        c_pwd, c_btn = st.columns([3, 1])
+                        with c_pwd: pwd_in = st.text_input("🔑 รหัสปลดล็อก", type="password", key="pwd_unlock")
+                        with c_btn: 
+                            if st.button("🔓 ปลดล็อก", use_container_width=True):
+                                if pwd_in == "Patwit1510":
+                                    st.session_state.unlock_password = "Patwit1510"
+                                    st.rerun()
+                                else: st.error("รหัสผิด")
+                    
                     # Form แก้ไข
-                    v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')))
-                    v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')))
-                    v_stmt = st.text_area("บันทึกผลการดำเนินการ *", value=clean_val(row.get('Statement')))
-                    v_sta = st.selectbox("สถานะ", ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"], index=0)
+                    v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=is_locked)
+                    v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=is_locked)
+                    v_stmt = st.text_area("บันทึกผลการดำเนินการ *", value=clean_val(row.get('Statement')), disabled=is_locked)
+                    
+                    idx_stat = STATUS_OPTIONS.index(current_status) if current_status in STATUS_OPTIONS else 0
+                    v_sta = st.selectbox("สถานะ", STATUS_OPTIONS, index=idx_stat, disabled=is_locked)
 
-                    if st.button("💾 บันทึกข้อมูล", type="primary", use_container_width=True):
-                        df.at[idx, 'Victim'] = v_vic
-                        df.at[idx, 'Accused'] = v_acc
-                        df.at[idx, 'Statement'] = v_stmt
-                        df.at[idx, 'Status'] = v_sta
-                        
-                        conn.update(data=df)
-                        # [FIX 429] ล้างแคชเพื่อให้การอ่านครั้งหน้าได้ข้อมูลล่าสุดทันที
-                        st.cache_data.clear()
-                        st.toast("✅ บันทึกเรียบร้อย!")
-                        time.sleep(1); st.rerun()
+                    if not is_locked:
+                        if st.button("💾 บันทึกข้อมูล", type="primary", use_container_width=True):
+                            df.at[idx, 'Victim'] = v_vic
+                            df.at[idx, 'Accused'] = v_acc
+                            df.at[idx, 'Statement'] = v_stmt
+                            df.at[idx, 'Status'] = v_sta
+                            
+                            conn.update(data=df)
+                            st.session_state.unlock_password = ""
+                            st.cache_data.clear() # ล้างแคช
+                            st.toast("✅ บันทึกเรียบร้อย!")
+                            time.sleep(1); st.rerun()
+                    
+                    # --- [RESTORATION] ปุ่ม PDF ---
+                    st.markdown("---")
+                    st.write("#### 📄 เอกสาร")
+                    has_stmt = clean_val(row.get('Statement')) != ""
+                    pdf_data = create_pdf(row)
+                    if isinstance(pdf_data, (bytes, bytearray)):
+                        label = "🖨️ พิมพ์เอกสาร (PDF)" if has_stmt else "🖨️ พิมพ์แบบฟอร์มเปล่า"
+                        btn_type = "primary" if has_stmt else "secondary"
+                        st.download_button(label=label, data=bytes(pdf_data), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True, type=btn_type)
+                    else: st.error(f"❌ สร้าง PDF ไม่ได้: {pdf_data}")
 
     except Exception as e: st.error(f"Error: {e}")
 
@@ -312,13 +355,11 @@ def main_page():
             if st.form_submit_button("ส่งข้อมูล", use_container_width=True):
                 if rep and typ and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    # [FIX 429] ใช้ ttl="1m"
                     df_old = conn.read(ttl="1m")
                     new_r = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid}])
                     conn.update(data=pd.concat([df_old, new_r], ignore_index=True))
                     
-                    # [FIX 429] ล้างแคชหลังส่งข้อมูล
-                    st.cache_data.clear()
+                    st.cache_data.clear() # ล้างแคช
                     st.session_state.submitted_id = rid; st.rerun()
                 else: st.error("กรุณากรอกข้อมูลให้ครบ")
 
