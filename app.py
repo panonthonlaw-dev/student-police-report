@@ -11,6 +11,7 @@ import qrcode
 import glob
 import math
 import mimetypes
+import time  # <--- เพิ่มบรรทัดนี้แล้วครับ
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
@@ -619,9 +620,8 @@ def main_page():
     with tab1:
         with st.form("report_form"):
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
-            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/แอลกอฮอ", "พกอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "ข่มขู่/บูลลี่/ด่าทอบนออนไลน์", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
+            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            
             # [PLACEHOLDER ADDED]
             det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ตัวอย่างการกรอก เกิดเหตุอะไร ที่ใด ใครเป็นคนกระทำความผิด(ถ้าทราบ)"))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
