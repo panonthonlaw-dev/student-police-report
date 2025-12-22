@@ -306,7 +306,6 @@ def officer_dashboard():
                         loc_counts = df['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
                             percent = (count / total_cases) * 100
-                            # เพิ่ม HTML span เพื่อแสดงเปอร์เซ็นต์สีแดง
                             st.markdown(f"- **{loc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
                             
                     with c_text2:
@@ -314,7 +313,6 @@ def officer_dashboard():
                         type_counts = df['Incident_Type'].value_counts()
                         for inc, count in type_counts.items():
                             percent = (count / total_cases) * 100
-                            # เพิ่ม HTML span เพื่อแสดงเปอร์เซ็นต์สีแดง
                             st.markdown(f"- **{inc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
 
                     st.markdown("---")
@@ -426,8 +424,21 @@ def main_page():
             det = st.text_area("รายละเอียดเหตุการณ์ *")
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
+            # --- ส่วน PDPA และ คำเตือนกฎหมาย ---
+            st.markdown("---")
+            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บรวบรวมข้อมูลเพื่อใช้ในการดำเนินงานของสถานีตำรวจนักเรียน")
+            
+            st.markdown("""
+                <div style='background-color: #ffebee; padding: 10px; border-radius: 5px; border-left: 5px solid #ef5350;'>
+                    <span style='color: #c62828; font-weight: bold;'>⚠️ คำเตือน:</span> การแจ้งความเท็จมีความผิดตามกฎหมายอาญา<br>
+                    <span style='color: #c62828; font-size: 0.9em;'>* การแจ้งเหตุนี้ไม่ใช่การแจ้งความที่มีผลเท่าการแจ้งความต่อเจ้าหน้าที่ตำรวจตามกฎหมายอาญา</span>
+                </div>
+            """, unsafe_allow_html=True)
+            
             if st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
-                if rep and loc and det:
+                if not pdpa_check:
+                    st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
+                elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     df_old = conn.read(ttl="1m")
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
