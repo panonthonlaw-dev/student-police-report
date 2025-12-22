@@ -102,7 +102,7 @@ class ReportPDF(FPDF):
 
 def create_pdf(row_data):
     try:
-        if not os.path.exists(FONT_FILE): return f"MISSING_FONT"
+        if not os.path.exists(FONT_FILE): return "ERROR: MISSING_FONT" # แก้ไขให้ return ERROR เพื่อไม่ให้โปรแกรม Crash
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
         pdf.add_page()
@@ -116,8 +116,8 @@ def create_pdf(row_data):
         qr_buffer = io.BytesIO()
         qr.save(qr_buffer)
         qr_buffer.seek(0)
-        # วาง QR Code ที่มุมขวาบน (x=170, y=10, ขนาด 25)
-        pdf.image(qr_buffer, x=170, y=10, w=25)
+        # วาง QR Code ที่มุมขวาบน (x=170, y=10, ขนาด 25) - เพิ่ม type='PNG' เพื่อความเสถียร
+        pdf.image(qr_buffer, x=170, y=10, w=25, type='PNG')
 
         # ส่วนที่ 1: ข้อมูลเบื้องต้น
         pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {rid_text}", ln=0)
@@ -185,7 +185,9 @@ def create_pdf(row_data):
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
-        return pdf.output()
+        # แก้ไข: ส่งคืนค่าเป็น bytes โดยตรง เพื่อแก้ปัญหา TypeError: string argument without an encoding
+        return pdf.output(dest='S').encode('latin-1')
+
     except Exception as e: return f"ERROR: {str(e)}"
 
 # --- 3. Helper Functions ---
@@ -467,7 +469,8 @@ def officer_dashboard():
                     st.markdown("---")
                     pdf_bytes = create_pdf(row)
                     if "ERROR" not in str(pdf_bytes):
-                        st.download_button("🖨️ พิมพ์รายงานสรุปผล (PDF)", data=bytes(pdf_bytes), file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True)
+                        # แก้ไข: ตัด bytes() ออก เพราะ pdf_bytes เป็น bytes อยู่แล้ว (จากที่แก้ใน create_pdf)
+                        st.download_button("🖨️ พิมพ์รายงานสรุปผล (PDF)", data=pdf_bytes, file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True)
                     
                     with st.expander("📜 ดูประวัติการแก้ไข (Audit Trail)"):
                         st.text(row.get('Audit_Log', 'ไม่มีประวัติ'))
