@@ -10,7 +10,7 @@ import io
 import qrcode
 import glob
 import math
-import mimetypes # <--- เพิ่มไลบรารีสำหรับตรวจสอบชนิดไฟล์
+import mimetypes
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
@@ -26,27 +26,46 @@ FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 def get_base64_image(image_path):
     if not image_path or not os.path.exists(image_path):
         return ""
-    with open(image_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode('utf-8')
+    try:
+        # เปิดไฟล์แบบ Binary
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode('utf-8')
+    except Exception as e:
+        return ""
 
-# ระบบค้นหาโลโก้อัตโนมัติ (รองรับ png, jpg, jpeg, bmp และแก้ปัญหา Case Sensitivity เบื้องต้น)
+# --- ระบบค้นหาโลโก้ (แก้ไขพิเศษสำหรับไฟล์ไม่มีนามสกุล) ---
 LOGO_PATH = None
-LOGO_MIME = "image/png" # ค่าเริ่มต้น
+LOGO_MIME = "image/png" # ค่า Default
 
-# ค้นหาทุกไฟล์ที่ขึ้นต้นด้วย school_logo โดยไม่สนนามสกุลก่อน
-possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
-# กรองเฉพาะนามสกุลรูปภาพที่รองรับ
-valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
-for f in possible_logos:
-    if f.lower().endswith(valid_extensions):
-        LOGO_PATH = f
-        # หา MIME Type ที่ถูกต้อง (เช่น image/jpeg หรือ image/png)
-        mime_type, _ = mimetypes.guess_type(f)
-        if mime_type:
-            LOGO_MIME = mime_type
-        break
+# 1. ระบุชื่อไฟล์ตรงๆ ที่คุณบอกมา
+target_file = os.path.join(BASE_DIR, "school_logo")
 
-# แปลงโลโก้เป็น Base64 เตรียมไว้สำหรับ PDF
+if os.path.exists(target_file):
+    LOGO_PATH = target_file
+    # พยายามเดาชนิดไฟล์จริงๆ โดยใช้ PIL
+    try:
+        with Image.open(target_file) as img:
+            # ถ้าเป็น JPEG ให้ใช้ image/jpeg ถ้าเป็น PNG ให้ใช้ image/png
+            if img.format == 'JPEG': LOGO_MIME = "image/jpeg"
+            elif img.format == 'PNG': LOGO_MIME = "image/png"
+    except:
+        pass # ถ้าเดาไม่ได้ให้ใช้ Default
+else:
+    # 2. ถ้าไม่เจอ ให้ลองหาแบบมีนามสกุล (เผื่อไว้)
+    possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+    for f in possible_logos:
+        # เอาไฟล์แรกที่เจอเลย ไม่สนใจนามสกุล
+        if os.path.isfile(f):
+            LOGO_PATH = f
+            # เช็ค MIME type
+            try:
+                with Image.open(f) as img:
+                    if img.format == 'JPEG': LOGO_MIME = "image/jpeg"
+                    elif img.format == 'PNG': LOGO_MIME = "image/png"
+            except: pass
+            break
+
+# แปลงโลโก้เป็น Base64
 LOGO_BASE64 = get_base64_image(LOGO_PATH) if LOGO_PATH else ""
 
 def get_now_th():
@@ -80,7 +99,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (WeasyPrint + Dynamic Base64 Logo) ---
+# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -100,7 +119,6 @@ def create_pdf(row):
 
     evidence_html = ""
     if row.get('Evidence_Image'):
-        # ใช้ MIME type เป็น image/jpeg เสมอสำหรับรูปหลักฐานที่ process แล้ว
         evidence_html = f"""
         <div style='margin-top: 10px; page-break-inside: avoid;'>
             <b>หลักฐานประกอบ:</b><br>
@@ -108,9 +126,10 @@ def create_pdf(row):
         </div>
         """
 
-    # สร้าง tag รูปภาพโลโก้โดยใช้ MIME type ที่ถูกต้อง
+    # ส่วน HTML Logo
     logo_html = ""
     if LOGO_BASE64:
+        # ใช้ LOGO_MIME ที่เราหามาได้ เพื่อระบุประเภทไฟล์ให้ถูกต้อง
         logo_html = f'<img class="logo" src="data:{LOGO_MIME};base64,{LOGO_BASE64}">'
 
     # HTML Template
@@ -160,8 +179,8 @@ def create_pdf(row):
                 font-size: 22pt;
                 font-weight: bold;
                 margin-top: 10px;
-                margin-left: 70px; /* ขยับหนีโลโก้ */
-                margin-right: 70px; /* ขยับหนี QR */
+                margin-left: 70px; 
+                margin-right: 70px;
             }}
             .subtitle {{
                 font-size: 18pt;
@@ -296,10 +315,15 @@ def officer_dashboard():
     # แสดง Logo และหัวข้อในหน้า Dashboard
     col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
     with col_h1:
+        # ใช้ st.image แสดงผล
         if LOGO_PATH and os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, width=80)
+            try:
+                st.image(LOGO_PATH, width=80)
+            except:
+                st.write("Logo Error")
         else:
-            st.write("ไม่พบโลโก้")
+            st.write("")
+            
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
@@ -567,12 +591,14 @@ def main_page():
                 st.rerun()
             else: st.error("รหัสผิด")
     
-    # --- พื้นที่ Debug (ตรวจสอบไฟล์) ---
+    # Debug Area
     st.markdown("---")
     with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
         st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
-        st.write("📄 ไฟล์ที่พบ (school_logo*):")
+        st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
+        
         found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+        st.write(f"🖼️ ไฟล์รูปโลโก้ที่พบ ({len(found_logos)} ไฟล์):")
         if found_logos:
             for f in found_logos:
                 st.code(os.path.basename(f))
@@ -581,7 +607,7 @@ def main_page():
             
         st.write("---")
         st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
-        st.write(f"✅ MIME Type ที่ตรวจพบ: `{LOGO_MIME}`")
+        st.write(f"✅ MIME Type ที่ใช้ใน PDF: `{LOGO_MIME}`")
 
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
