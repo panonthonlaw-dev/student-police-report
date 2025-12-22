@@ -5,3 +5,4 @@ fpdf
 Pillow
 qrcode
 xlsxwriter
+matplotlib
