@@ -66,6 +66,7 @@ def sanitize_input(text):
         return str(text).replace("=", "").replace('"', "").replace("'", "").strip()
     return text
 
+# --- [UPDATE แก้ปัญหา Error 50000 characters] ---
 def process_image(img_file):
     if img_file is None: return ""
     try:
@@ -73,11 +74,32 @@ def process_image(img_file):
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
         
-        img.thumbnail((800, 800))
-        buffer = io.BytesIO()
+        # ตั้งค่าเริ่มต้น
+        max_size = 800
+        quality = 65
         
-        img.save(buffer, format="JPEG", quality=65, optimize=True)
-        return base64.b64encode(buffer.getvalue()).decode()
+        while True:
+            # รีไซส์
+            img_copy = img.copy()
+            img_copy.thumbnail((max_size, max_size))
+            
+            buffer = io.BytesIO()
+            img_copy.save(buffer, format="JPEG", quality=quality, optimize=True)
+            b64_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            # เช็คว่าเกินลิมิต Google Sheets (50,000 chars) หรือไม่
+            # เผื่อที่ไว้หน่อย ตัดที่ 49,000
+            if len(b64_str) < 49000:
+                return b64_str
+            
+            # ถ้ายังเกิน ให้ลดขนาดและคุณภาพลงอีก
+            max_size = int(max_size * 0.7)
+            quality = int(quality - 5)
+            
+            # ถ้าเล็กลงจนภาพดูไม่ได้แล้ว ให้เลิกทำ (ป้องกัน Loop ตาย)
+            if max_size < 200 or quality < 10:
+                return "" # ยอมแพ้ ไม่บันทึกรูปดีกว่าโปรแกรม Error
+                
     except: return ""
 
 # --- รายชื่อสถานที่ ---
@@ -323,7 +345,7 @@ def officer_dashboard():
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
-        st.write("") # Spacer
+        st.write("") 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
 
