@@ -11,6 +11,7 @@ import math
 from fpdf import FPDF
 from PIL import Image
 import io
+import qrcode # (เพิ่มสำหรับข้อ 3)
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
@@ -31,6 +32,13 @@ LOCATION_OPTIONS = [
 
 def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
+
+# (เพิ่มสำหรับข้อ 4: Data Privacy & Sanitization)
+def sanitize_input(text):
+    if text:
+        # ลบอักขระพิเศษที่อาจเป็นอันตรายต่อระบบไฟล์หรือ CSV Injection
+        return str(text).replace("=", "").replace('"', "").replace("'", "").strip()
+    return text
 
 # ฟังก์ชันย่อรูปภาพ (แก้ไข: ปรับลดขนาดและ Quality เพื่อไม่ให้เกิน Limit ของ Google Sheets)
 def process_image(img_file):
@@ -60,8 +68,16 @@ class ReportPDF(FPDF):
         if os.path.exists(LOGO_FILE):
             self.image(LOGO_FILE, x=15, y=10, w=25)
         
+        # (เพิ่มสำหรับข้อ 3: Watermark)
+        self.set_font('ThaiFont', '', 40)
+        self.set_text_color(240, 240, 240) # สีเทาจางมาก
+        self.set_xy(50, 100)
+        self.cell(0, 0, txt="เอกสารลับ - Confidential", align='C') # ลายน้ำกลางหน้า
+        self.set_text_color(0, 0, 0) # กลับมาเป็นสีดำปกติ
+
         self.set_y(15)
         self.set_x(45)
+        self.set_font('ThaiFont', '', 20) # Reset Font Size
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
         self.set_font('ThaiFont', '', 16)
         self.set_x(45)
@@ -94,8 +110,17 @@ def create_pdf(row_data):
         pdf.add_font('ThaiFont', '', FONT_FILE)
         pdf.set_font('ThaiFont', '', 14)
         
+        # (เพิ่มสำหรับข้อ 3: QR Code มุมขวาบน)
+        rid_text = clean_val(row_data.get('Report_ID'))
+        qr = qrcode.make(rid_text)
+        qr_buffer = io.BytesIO()
+        qr.save(qr_buffer)
+        qr_buffer.seek(0)
+        # วาง QR Code ที่มุมขวาบน (x=170, y=10, ขนาด 25)
+        pdf.image(qr_buffer, x=170, y=10, w=25)
+
         # ส่วนที่ 1: ข้อมูลเบื้องต้น
-        pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}", ln=0)
+        pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {rid_text}", ln=0)
         pdf.cell(epw*0.4, 8, txt=f"วันที่แจ้ง: {clean_val(row_data.get('Timestamp'))}", ln=1, align='R')
         pdf.ln(2)
         
@@ -296,6 +321,14 @@ def officer_dashboard():
             with tab_dash:
                 st.subheader("📊 สรุปสถิติ")
                 
+                # (เพิ่มสำหรับข้อ 2: Export Excel)
+                with st.expander("📥 Export ข้อมูล"):
+                    if not df.empty:
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                            df.to_excel(writer, index=False, sheet_name='ReportData')
+                        st.download_button(label="ดาวน์โหลดไฟล์ Excel", data=buffer, file_name=f"Report_Export_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
+                
                 if not df.empty:
                     total_cases = len(df)
                     top_loc = df['Location'].mode()[0] if not df['Location'].mode().empty else "-"
@@ -331,6 +364,33 @@ def officer_dashboard():
                     with col2:
                         st.markdown("**🔹 กราฟแท่ง: สถิติสถานที่เกิดเหตุ**")
                         st.bar_chart(df['Location'].value_counts(), color="#1E3A8A")
+                    
+                    # (เพิ่มสำหรับข้อ 5: Advanced Statistics - Heatmap & Correlation)
+                    st.markdown("---")
+                    st.subheader("📈 สถิติเชิงลึก (Advanced Analytics)")
+                    
+                    # เตรียมข้อมูลวันที่
+                    df['datetime'] = pd.to_datetime(df['Timestamp'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+                    df = df.dropna(subset=['datetime'])
+                    df['Hour'] = df['datetime'].dt.hour
+                    df['Day'] = df['datetime'].dt.strftime('%A')
+                    
+                    # แปลงชื่อวันเป็นภาษาไทย
+                    days_th = {'Monday': 'จันทร์', 'Tuesday': 'อังคาร', 'Wednesday': 'พุธ', 'Thursday': 'พฤหัสบดี', 'Friday': 'ศุกร์', 'Saturday': 'เสาร์', 'Sunday': 'อาทิตย์'}
+                    df['DayTH'] = df['Day'].map(days_th)
+
+                    adv1, adv2 = st.columns(2)
+                    with adv1:
+                        st.markdown("**🔥 ความสัมพันธ์: สถานที่ vs ประเภทเหตุ**")
+                        # Correlation Table
+                        corr_df = pd.crosstab(df['Location'], df['Incident_Type'])
+                        st.dataframe(corr_df.style.background_gradient(cmap="Reds"), use_container_width=True, height=300)
+                    
+                    with adv2:
+                        st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
+                        # Heatmap Data: Day vs Hour
+                        heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
+                        st.dataframe(heatmap_df.style.background_gradient(cmap="Blues"), use_container_width=True, height=300)
                     
                 else:
                     st.info("ยังไม่มีข้อมูลในระบบ")
@@ -426,10 +486,11 @@ def main_page():
     # Tab 1: แจ้งเหตุ
     with tab1:
         with st.form("report_form"):
-            rep = st.text_input("ชื่อผู้แจ้ง *")
+            # (ใช้งาน sanitize_input ที่เพิ่มเข้ามาในข้อ 4)
+            rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            det = st.text_area("รายละเอียดเหตุการณ์ *")
+            det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *"))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
             # --- ส่วน PDPA และ คำเตือนกฎหมาย ---
@@ -460,7 +521,7 @@ def main_page():
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะการดำเนินงาน")
         st.markdown("กรอก **เลข 4 ตัวท้าย** ของรหัสรับแจ้ง (เช่น 5929) เพื่อตรวจสอบสถานะ")
-        search_code = st.text_input("เลข 4 ตัวท้าย", max_chars=4, placeholder="ตัวอย่าง: 5929")
+        search_code = sanitize_input(st.text_input("เลข 4 ตัวท้าย", max_chars=4, placeholder="ตัวอย่าง: 5929"))
         
         if st.button("🔎 ค้นหา", use_container_width=True):
             if len(search_code) == 4 and search_code.isdigit():
