@@ -414,7 +414,6 @@ def officer_dashboard():
                     c_text1, c_text2 = st.columns(2)
                     with c_text1:
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
-                        # [UPDATE] เรียง Top 5 + เพิ่มเปอร์เซ็นต์สีแดงเล็ก
                         loc_counts = df['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
                             percent = (count / total_cases) * 100
@@ -422,8 +421,7 @@ def officer_dashboard():
                             
                     with c_text2:
                         st.markdown("**📌 สรุปยอดตามประเภทเหตุ**")
-                        # [UPDATE] เรียง Top 5 (หรือทั้งหมดก็ได้) + เพิ่มเปอร์เซ็นต์สีแดงเล็ก
-                        type_counts = df['Incident_Type'].value_counts().head(5) # เอา Top 5 เพื่อความสวยงาม
+                        type_counts = df['Incident_Type'].value_counts().head(5)
                         for inc, count in type_counts.items():
                             percent = (count / total_cases) * 100
                             st.markdown(f"- **{inc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
@@ -450,20 +448,22 @@ def officer_dashboard():
                     with adv1:
                         st.markdown("**🔥 ความสัมพันธ์: สถานที่ vs ประเภทเหตุ**")
                         corr_df = pd.crosstab(df['Location'], df['Incident_Type'])
-                        st.dataframe(corr_df.style.background_gradient(cmap="Reds"), use_container_width=True, height=300)
+                        # [แก้ไข] เอา gradient ออกเพื่อแก้ปัญหา missing matplotlib
+                        st.dataframe(corr_df, use_container_width=True, height=300)
                     with adv2:
                         st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
                         heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
-                        st.dataframe(heatmap_df.style.background_gradient(cmap="Blues"), use_container_width=True, height=300)
+                        # [แก้ไข] เอา gradient ออก
+                        st.dataframe(heatmap_df, use_container_width=True, height=300)
     
     except Exception as e: st.error(f"Error: {e}")
 
-    # --- [UPDATE] ย้ายเมนู Debug มาซ่อนที่นี่ และต้องใส่รหัส Admin ---
+    # เมนู Debug (ซ่อนแล้ว)
     st.markdown("---")
-    if user.get('role') == 'admin': # ตรวจสอบสิทธิ์เบื้องต้นจาก session
+    if user.get('role') == 'admin':
         with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
             admin_pwd = st.text_input("กรุณาใส่รหัส Admin เพื่อเข้าถึงข้อมูล:", type="password", key="debug_admin_pwd")
-            if admin_pwd == "Patwit1510": # รหัสผ่านที่คุณตั้งไว้
+            if admin_pwd == "Patwit1510":
                 st.success("Access Granted")
                 st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
                 st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
