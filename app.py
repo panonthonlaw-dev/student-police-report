@@ -9,6 +9,7 @@ import base64
 import io
 import qrcode
 import glob
+import math  # <--- เพิ่มบรรทัดนี้แล้วครับ
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 
@@ -385,19 +386,19 @@ def officer_dashboard():
                     with c1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=is_locked)
                         v_wit = st.text_input("พยาน", value=clean_val(row.get('Witness')), disabled=is_locked)
-                        v_stu = st.text_input("ตำรวจนักเรียนผู้สอบสวน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
+                        v_stu = st.text_input("ตำรวจนักเรียน", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
                     with c2:
-                        v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=is_locked)
-                        v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
+                        v_acc = st.text_input("ผู้ถูกกล่าวหา", value=clean_val(row.get('Accused')), disabled=is_locked)
+                        v_tea = st.text_input("ครูผู้สอบสวน", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
                     
-                    v_stmt = st.text_area("ผลการดำเนินการสอบสวน *", value=clean_val(row.get('Statement')), disabled=is_locked)
+                    v_stmt = st.text_area("ผลการดำเนินการสอบสวน", value=clean_val(row.get('Statement')), disabled=is_locked)
                     
                     ev_img_file = st.file_uploader("📸 แนบรูปหลักฐานการสอบสวนเพิ่มเติม", type=['jpg','png'], disabled=is_locked)
                     if clean_val(row.get('Evidence_Image')):
                         st.image(base64.b64decode(row['Evidence_Image']), width=200, caption="รูปหลักฐานปัจจุบัน")
 
                     opts = ["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"]
-                    v_sta = st.selectbox("สถานะปัจจุบัน", opts, index=opts.index(current_status) if current_status in opts else 0, disabled=is_locked)
+                    v_sta = st.selectbox("สถานะ", opts, index=opts.index(current_status) if current_status in opts else 0, disabled=is_locked)
 
                     if not is_locked:
                         if st.button("💾 บันทึกข้อมูลและประวัติ", type="primary", use_container_width=True):
@@ -446,7 +447,7 @@ def officer_dashboard():
 
     except Exception as e: st.error(f"Error: {e}")
 
-# --- 5. หน้าหลักสำหรับนักเรียน (กู้คืนกลับมาแล้ว) ---
+# --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
     if LOGO_PATH: 
         c1, c2, c3 = st.columns([5, 1, 5])
@@ -516,6 +517,7 @@ def main_page():
             else: st.error("กรุณากรอกตัวเลขให้ครบ 4 หลัก")
 
     st.markdown("---")
+    st.info("กรุณาเข้าสู่ระบบเพื่อใช้งานสำหรับเจ้าหน้าที่")
     with st.expander("🔐 สำหรับเจ้าหน้าที่"):
         pw = st.text_input("รหัสผ่าน", type="password")
         if st.button("Login"):
