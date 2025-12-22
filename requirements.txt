@@ -1,8 +1,7 @@
 streamlit
-st-gsheets-connection
+streamlit-gsheets
 pandas
-fpdf
+WeasyPrint
 Pillow
 qrcode
 xlsxwriter
-matplotlib
