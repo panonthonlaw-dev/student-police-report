@@ -13,7 +13,8 @@ from PIL import Image
 import io
 import qrcode
 import xlsxwriter
-import tempfile # (จำเป็นต้องเพิ่มบรรทัดนี้ เพื่อแก้ปัญหา PDF Error)
+import tempfile
+import glob
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
@@ -21,7 +22,7 @@ st.set_page_config(page_title="ระบบแจ้งเหตุสถาน�
 LOGO_FILE = "school_logo.png"
 FONT_FILE = "THSarabunNew.ttf"
 
-# รายชื่อสถานที่ (Dropdown Options)
+# รายชื่อสถานที่
 LOCATION_OPTIONS = [
     "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
     "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
@@ -57,9 +58,11 @@ def process_image(img_file):
 # --- 2. Class PDF ---
 class ReportPDF(FPDF):
     def header(self):
+        # [แก้ไข] เพิ่ม uni=True เพื่อรองรับภาษาไทยและแก้ปัญหา Encoding
         if os.path.exists(FONT_FILE):
-            self.add_font('ThaiFont', '', FONT_FILE)
+            self.add_font('ThaiFont', '', FONT_FILE, uni=True)
             self.set_font('ThaiFont', '', 20)
+        
         if os.path.exists(LOGO_FILE):
             self.image(LOGO_FILE, x=15, y=10, w=25)
         
@@ -84,7 +87,7 @@ class ReportPDF(FPDF):
     def footer(self):
         self.set_y(-15)
         if os.path.exists(FONT_FILE):
-            self.add_font('ThaiFont', '', FONT_FILE)
+            self.add_font('ThaiFont', '', FONT_FILE, uni=True)
             self.set_font('ThaiFont', '', 10)
         
         printer = "System"
@@ -95,17 +98,25 @@ class ReportPDF(FPDF):
         self.set_x(10)
         self.cell(0, 10, txt=f"พิมพ์โดย: {printer} | เวลา: {now_str} | หน้า {self.page_no()}", align='R')
 
-# --- แก้ไขฟังก์ชัน create_pdf (ใช้ TempFile เพื่อแก้ปัญหา Encoding 100%) ---
+# --- ฟังก์ชันสร้าง PDF (แก้ไขปัญหา Unicode & File Cache) ---
 def create_pdf(row_data):
     tmp_path = None
     try:
-        if not os.path.exists(FONT_FILE): return b"ERROR: FONT_MISSING" # ส่งค่ากลับเป็น bytes
+        # [แก้ไข] ลบไฟล์ Cache ของ FPDF (.pkl) เพื่อป้องกัน Error ตกค้าง
+        for pkl_file in glob.glob("*.pkl"):
+            try: os.remove(pkl_file)
+            except: pass
+
+        if not os.path.exists(FONT_FILE): 
+            return b"ERROR: FONT_MISSING"
 
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
         pdf.add_page()
         epw = pdf.w - 2 * pdf.l_margin
-        pdf.add_font('ThaiFont', '', FONT_FILE)
+        
+        # [แก้ไข] ต้องใส่ uni=True ทุกครั้งที่ add_font
+        pdf.add_font('ThaiFont', '', FONT_FILE, uni=True)
         pdf.set_font('ThaiFont', '', 14)
         
         # QR Code
@@ -180,29 +191,24 @@ def create_pdf(row_data):
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
-        # === ส่วนสำคัญ: เขียนลงไฟล์ Temp แล้วอ่านกลับเป็น Binary ล้วนๆ ===
-        # ใช้ dest='F' บังคับให้เขียนไฟล์ เพื่อเลี่ยงการแปลง String ของ FPDF
+        # [แก้ไข] ใช้ TempFile + Binary Mode เพื่อเลี่ยงปัญหา String Encoding 100%
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             pdf.output(tmp.name, 'F')
             tmp_path = tmp.name
         
-        # อ่านไฟล์กลับมาเป็น bytes (โหมด rb)
         with open(tmp_path, 'rb') as f:
             pdf_bytes = f.read()
             
-        # ลบไฟล์ทิ้ง
-        try:
-            os.remove(tmp_path)
+        try: os.remove(tmp_path)
         except: pass
             
         return pdf_bytes
 
     except Exception as e:
-        # หากมีไฟล์ค้างให้ลบ
         if tmp_path and os.path.exists(tmp_path):
             try: os.remove(tmp_path)
             except: pass
-        # ส่ง Error กลับเป็น bytes
+        # ส่งคืน Error เป็น bytes
         return f"ERROR: {str(e)}".encode('utf-8')
 
 # --- 3. Helper Functions ---
@@ -457,7 +463,6 @@ def officer_dashboard():
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
                             
-                            # ตรวจสอบว่าเป็น Error Message แบบ Bytes หรือไม่
                             if pdf_bytes.startswith(b"ERROR"):
                                 err_msg = pdf_bytes.decode('utf-8', errors='ignore')
                                 st.error(f"ระบบ PDF ขัดข้อง: {err_msg}")
