@@ -13,6 +13,7 @@ from PIL import Image
 import io
 import qrcode
 import xlsxwriter
+import tempfile # (เพิ่มบรรทัดนี้: เพื่อแก้ปัญหา PDF Error)
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
@@ -97,6 +98,8 @@ class ReportPDF(FPDF):
 def create_pdf(row_data):
     try:
         if not os.path.exists(FONT_FILE): return "ERROR: ไม่พบไฟล์ฟอนต์ THSarabunNew.ttf ในระบบ"
+        
+        # สร้าง PDF Object
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
         pdf.add_page()
@@ -175,7 +178,18 @@ def create_pdf(row_data):
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
-        return pdf.output(dest='S').encode('latin-1')
+        # --- แก้ไขส่วนนี้: ใช้ TempFile เพื่อป้องกัน Encoding Error 100% ---
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name)
+            tmp.flush()
+            with open(tmp.name, "rb") as f:
+                pdf_bytes = f.read()
+        
+        try:
+            os.unlink(tmp.name) # ลบไฟล์ชั่วคราวทิ้ง
+        except: pass
+            
+        return pdf_bytes
 
     except Exception as e: return f"ERROR: {str(e)}"
 
@@ -421,7 +435,7 @@ def officer_dashboard():
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
-                    # --- ส่วน PDF แยกออกมาต่างหาก ---
+                    # --- ส่วน PDF แยกออกมาต่างหาก (แก้ไขตามคำขอ) ---
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
@@ -430,7 +444,7 @@ def officer_dashboard():
                             st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF (ประกอบด้วยข้อมูลผู้แจ้ง, รายละเอียด, และผลการสอบสวน)")
                         with col_pdf_2:
                             pdf_data = create_pdf(row)
-                            # ตรวจสอบว่าเป็น Error Message หรือไม่ (ถ้าเป็น str และขึ้นต้นด้วย ERROR ให้แสดง Error)
+                            # ตรวจสอบว่ามี Error หรือไม่
                             if isinstance(pdf_data, str) and pdf_data.startswith("ERROR"):
                                 st.error(f"ระบบ PDF ขัดข้อง: {pdf_data}")
                             else:
