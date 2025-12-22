@@ -9,43 +9,35 @@ import base64
 import io
 import qrcode
 import glob
-import math  # <--- เพิ่มบรรทัดนี้แล้วครับ
+import math
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
+from PIL import Image
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ค้นหาไฟล์ ---
+# --- ค้นหาไฟล์ (Font & Logo) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
-# รายชื่อสถานที่ (Dropdown Options)
-LOCATION_OPTIONS = [
-    "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
-    "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
-    "อาคารไฟฟ้าสนามฟุตบอล", "สนามบาส", "โรงอาหาร", "สนามปิงปอง",
-    "สวนหลังห้องปกครอง", "สวนสนามเปตอง", "สวนเกษตร", "สวนหลังไทรทอง",
-    "ห้องน้ำโรงอาหารติดอาคาร 4", "ห้องน้ำโรงอาหารติดประตูโรงอาหาร",
-    "ห้องน้ำหลังอาคาร 3", "ห้องน้ำอาคารไฟฟ้า", "ห้องน้ำหลังอาคาร 5",
-    "อื่นๆ"
-]
-
-# ฟังก์ชันแปลงรูปเป็น Base64
+# ฟังก์ชันแปลงรูปภาพเป็น Base64 (สำคัญมากสำหรับ PDF)
 def get_base64_image(image_path):
     if not image_path or not os.path.exists(image_path):
         return ""
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode('utf-8')
 
-# หาไฟล์โลโก้
+# ระบบค้นหาโลโก้อัตโนมัติ (รองรับ png, jpg, jpeg)
 LOGO_PATH = None
+# ค้นหาไฟล์ที่ชื่อขึ้นต้นด้วย school_logo
 possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
 for f in possible_logos:
     if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
         LOGO_PATH = f
         break
 
+# แปลงโลโก้เป็น Base64 เตรียมไว้สำหรับ PDF
 LOGO_BASE64 = get_base64_image(LOGO_PATH) if LOGO_PATH else ""
 
 def get_now_th():
@@ -59,7 +51,6 @@ def sanitize_input(text):
 def process_image(img_file):
     if img_file is None: return ""
     try:
-        from PIL import Image
         img = Image.open(img_file)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
@@ -69,7 +60,18 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- ฟังก์ชันสร้าง PDF ด้วย WeasyPrint (แก้ปัญหาภาษาไทย 100%) ---
+# --- รายชื่อสถานที่ ---
+LOCATION_OPTIONS = [
+    "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
+    "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
+    "อาคารไฟฟ้าสนามฟุตบอล", "สนามบาส", "โรงอาหาร", "สนามปิงปอง",
+    "สวนหลังห้องปกครอง", "สวนสนามเปตอง", "สวนเกษตร", "สวนหลังไทรทอง",
+    "ห้องน้ำโรงอาหารติดอาคาร 4", "ห้องน้ำโรงอาหารติดประตูโรงอาหาร",
+    "ห้องน้ำหลังอาคาร 3", "ห้องน้ำอาคารไฟฟ้า", "ห้องน้ำหลังอาคาร 5",
+    "อื่นๆ"
+]
+
+# --- ฟังก์ชันสร้าง PDF (WeasyPrint + Base64 Logo) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -96,6 +98,7 @@ def create_pdf(row):
         </div>
         """
 
+    # HTML Template
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -123,12 +126,14 @@ def create_pdf(row):
                 text-align: center;
                 position: relative;
                 margin-bottom: 20px;
+                height: 80px; /* จองพื้นที่ให้ Logo */
             }}
             .logo {{
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 60px;
+                width: 60px; /* ขนาดโลโก้ใน PDF */
+                height: auto;
             }}
             .qr {{
                 position: absolute;
@@ -139,6 +144,7 @@ def create_pdf(row):
             .title {{
                 font-size: 22pt;
                 font-weight: bold;
+                margin-top: 10px;
             }}
             .subtitle {{
                 font-size: 18pt;
@@ -147,6 +153,7 @@ def create_pdf(row):
             .info-table {{
                 width: 100%;
                 margin-bottom: 10px;
+                border-collapse: collapse;
             }}
             .box {{
                 border: 1px solid #000;
@@ -171,8 +178,10 @@ def create_pdf(row):
     <body>
         <div class="header">
             {'<img class="logo" src="data:image/png;base64,' + LOGO_BASE64 + '">' if LOGO_BASE64 else ''}
+            
             <div class="title">สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</div>
             <div class="subtitle">ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน</div>
+            
             <img class="qr" src="data:image/png;base64,{qr_base64}">
         </div>
         <hr>
@@ -189,11 +198,15 @@ def create_pdf(row):
                 <td><b>สถานที่:</b> {location}</td>
             </tr>
         </table>
-        <div><b>รายละเอียดเหตุการณ์:</b></div>
+        
+        <div style="margin-top:10px;"><b>รายละเอียดเหตุการณ์:</b></div>
         <div class="box">{details}</div>
+        
         <div><b>ผลการดำเนินการสอบสวน:</b></div>
         <div class="box">{statement}</div>
+        
         {evidence_html}
+        
         <table class="signature-table">
             <tr>
                 <td width="50%">
@@ -263,9 +276,14 @@ def clear_search_callback():
 # --- 4. Dashboard (เจ้าหน้าที่) ---
 def officer_dashboard():
     user = st.session_state.current_user
-    col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
-    with col_h2: 
+    # แสดง Logo และหัวข้อในหน้า Dashboard
+    col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
+    with col_h1:
+        if LOGO_PATH: st.image(LOGO_PATH, width=80)
+    with col_h2:
+        st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
+    with col_h3: 
+        st.write("") # Spacer
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
 
@@ -386,19 +404,19 @@ def officer_dashboard():
                     with c1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=is_locked)
                         v_wit = st.text_input("พยาน", value=clean_val(row.get('Witness')), disabled=is_locked)
-                        v_stu = st.text_input("ตำรวจนักเรียน", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
+                        v_stu = st.text_input("ตำรวจนักเรียน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
                     with c2:
-                        v_acc = st.text_input("ผู้ถูกกล่าวหา", value=clean_val(row.get('Accused')), disabled=is_locked)
-                        v_tea = st.text_input("ครูผู้สอบสวน", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
+                        v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=is_locked)
+                        v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
                     
-                    v_stmt = st.text_area("ผลการดำเนินการสอบสวน", value=clean_val(row.get('Statement')), disabled=is_locked)
+                    v_stmt = st.text_area("ผลการดำเนินการสอบสวน *", value=clean_val(row.get('Statement')), disabled=is_locked)
                     
                     ev_img_file = st.file_uploader("📸 แนบรูปหลักฐานการสอบสวนเพิ่มเติม", type=['jpg','png'], disabled=is_locked)
                     if clean_val(row.get('Evidence_Image')):
                         st.image(base64.b64decode(row['Evidence_Image']), width=200, caption="รูปหลักฐานปัจจุบัน")
 
                     opts = ["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"]
-                    v_sta = st.selectbox("สถานะ", opts, index=opts.index(current_status) if current_status in opts else 0, disabled=is_locked)
+                    v_sta = st.selectbox("สถานะปัจจุบัน", opts, index=opts.index(current_status) if current_status in opts else 0, disabled=is_locked)
 
                     if not is_locked:
                         if st.button("💾 บันทึกข้อมูลและประวัติ", type="primary", use_container_width=True):
@@ -419,7 +437,7 @@ def officer_dashboard():
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
-                    # --- ปุ่ม PDF ---
+                    # --- ปุ่ม PDF (แก้ไขแล้ว) ---
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
@@ -449,9 +467,11 @@ def officer_dashboard():
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
+    # แสดงโลโก้ในหน้าหลัก
     if LOGO_PATH: 
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
+    
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
     
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
