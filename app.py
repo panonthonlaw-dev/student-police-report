@@ -80,8 +80,8 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- [SAFETY FIX] ฟังก์ชันตรวจสอบคอลัมน์แบบปลอดภัย (ไม่ลบข้อมูล) ---
-def safe_ensure_columns(df):
+# --- [SAFETY FIX] ฟังก์ชันนี้ใช้ "เฉพาะตอนแสดงผล" เท่านั้น ห้ามใช้ตอนบันทึก ---
+def safe_ensure_columns_for_view(df):
     required_cols = [
         'Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 
         'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 
@@ -89,14 +89,10 @@ def safe_ensure_columns(df):
         'Statement', 'Evidence_Image'
     ]
     
-    # ถ้า DataFrame ว่างจริง (ไม่มีแถวและไม่มีคอลัมน์) ค่อยสร้าง Header ใหม่
-    if df is None:
+    if df is None or df.empty:
         return pd.DataFrame(columns=required_cols)
-        
-    # แก้ชื่อคอลัมน์ที่มีช่องว่าง
-    df.columns = df.columns.str.strip()
     
-    # เติมเฉพาะคอลัมน์ที่ขาด (ไม่แตะต้องข้อมูลที่มีอยู่)
+    # เติมคอลัมน์ที่ขาดเพื่อให้ code หน้าเว็บไม่พัง
     for col in required_cols:
         if col not in df.columns:
             df[col] = ""
@@ -114,7 +110,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
+# --- ฟังก์ชันสร้าง PDF ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -352,11 +348,13 @@ def officer_dashboard():
             st.session_state.current_user = None; st.rerun()
 
     try:
-        # [CRITICAL FIX] บังคับอ่านข้อมูลสด + ซ่อมคอลัมน์ ก่อนค้นหา
-        df = conn.read(ttl="0")
-        df = safe_ensure_columns(df)
-        df = df.fillna("")
-        df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        # อ่านข้อมูลดิบ (ไม่ผ่านตัวซ่อม) เพื่อไม่ให้ข้อมูลเพี้ยนตอนบันทึก
+        df_raw = conn.read(ttl="0")
+        
+        # สร้างตัวแปรสำหรับแสดงผล (ผ่านตัวซ่อม เพื่อไม่ให้ error หน้าเว็บ)
+        df_display = safe_ensure_columns_for_view(df_raw.copy()) 
+        df_display = df_display.fillna("")
+        df_display['Report_ID'] = df_display['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
         if st.session_state.view_mode == "list":
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
@@ -367,7 +365,7 @@ def officer_dashboard():
                 with c_btn_search: st.button("🔍 ค้นหา", use_container_width=True)
                 with c_btn_clear: st.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
                 
-                filtered_df = df.copy()
+                filtered_df = df_display.copy()
                 if search_q:
                     filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
                 
@@ -422,16 +420,16 @@ def officer_dashboard():
             with tab_dash:
                 st.subheader("📊 สรุปสถิติ")
                 with st.expander("📥 Export ข้อมูล"):
-                    if not df.empty:
+                    if not df_display.empty:
                         buffer = io.BytesIO()
                         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                            df.to_excel(writer, index=False, sheet_name='ReportData')
+                            df_display.to_excel(writer, index=False, sheet_name='ReportData')
                         st.download_button(label="ดาวน์โหลดไฟล์ Excel", data=buffer, file_name=f"Report_Export_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
                 
-                if not df.empty:
-                    total_cases = len(df)
-                    top_loc = df['Location'].mode()[0] if not df['Location'].mode().empty else "-"
-                    top_inc = df['Incident_Type'].mode()[0] if not df['Incident_Type'].mode().empty else "-"
+                if not df_display.empty:
+                    total_cases = len(df_display)
+                    top_loc = df_display['Location'].mode()[0] if not df_display['Location'].mode().empty else "-"
+                    top_inc = df_display['Incident_Type'].mode()[0] if not df_display['Incident_Type'].mode().empty else "-"
                     m1, m2, m3 = st.columns(3)
                     m1.metric("แจ้งเหตุทั้งหมด", f"{total_cases} ครั้ง")
                     m2.metric("สถานที่เกิดเหตุบ่อยสุด", top_loc)
@@ -441,14 +439,14 @@ def officer_dashboard():
                     c_text1, c_text2 = st.columns(2)
                     with c_text1:
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
-                        loc_counts = df['Location'].value_counts().head(5)
+                        loc_counts = df_display['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
                             percent = (count / total_cases) * 100
                             st.markdown(f"- **{loc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
                             
                     with c_text2:
                         st.markdown("**📌 สรุปยอดตามประเภทเหตุ**")
-                        type_counts = df['Incident_Type'].value_counts().head(5)
+                        type_counts = df_display['Incident_Type'].value_counts().head(5)
                         for inc, count in type_counts.items():
                             percent = (count / total_cases) * 100
                             st.markdown(f"- **{inc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
@@ -457,38 +455,41 @@ def officer_dashboard():
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("**🔹 แผนภูมิวงกลม: สัดส่วนประเภทเหตุ**")
-                        st.bar_chart(df['Incident_Type'].value_counts(), color="#FF4B4B")
+                        st.bar_chart(df_display['Incident_Type'].value_counts(), color="#FF4B4B")
                     with col2:
                         st.markdown("**🔹 กราฟแท่ง: สถิติสถานที่เกิดเหตุ**")
-                        st.bar_chart(df['Location'].value_counts(), color="#1E3A8A")
+                        st.bar_chart(df_display['Location'].value_counts(), color="#1E3A8A")
                     
                     st.markdown("---")
                     st.subheader("📈 สถิติเชิงลึก (Advanced Analytics)")
-                    df['datetime'] = pd.to_datetime(df['Timestamp'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
-                    df = df.dropna(subset=['datetime'])
-                    df['Hour'] = df['datetime'].dt.hour
-                    df['Day'] = df['datetime'].dt.strftime('%A')
+                    df_display['datetime'] = pd.to_datetime(df_display['Timestamp'], format="%d/%m/%Y %H:%M:%S", errors='coerce')
+                    df_display = df_display.dropna(subset=['datetime'])
+                    df_display['Hour'] = df_display['datetime'].dt.hour
+                    df_display['Day'] = df_display['datetime'].dt.strftime('%A')
                     days_th = {'Monday': 'จันทร์', 'Tuesday': 'อังคาร', 'Wednesday': 'พุธ', 'Thursday': 'พฤหัสบดี', 'Friday': 'ศุกร์', 'Saturday': 'เสาร์', 'Sunday': 'อาทิตย์'}
-                    df['DayTH'] = df['Day'].map(days_th)
+                    df_display['DayTH'] = df_display['Day'].map(days_th)
 
                     adv1, adv2 = st.columns(2)
                     with adv1:
                         st.markdown("**🔥 ความสัมพันธ์: สถานที่ vs ประเภทเหตุ**")
-                        corr_df = pd.crosstab(df['Location'], df['Incident_Type'])
+                        corr_df = pd.crosstab(df_display['Location'], df_display['Incident_Type'])
                         st.dataframe(corr_df, use_container_width=True, height=300)
                     with adv2:
                         st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
-                        heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
+                        heatmap_df = pd.crosstab(df_display['DayTH'], df_display['Hour'])
                         st.dataframe(heatmap_df, use_container_width=True, height=300)
 
         elif st.session_state.view_mode == "detail":
             st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, use_container_width=True)
             
             sid = str(st.session_state.selected_case_id).strip()
-            sel = df[df['Report_ID'] == sid]
+            # ใช้ df_display ค้นหาเพื่อไม่ให้ error
+            sel = df_display[df_display['Report_ID'] == sid]
             
             if not sel.empty:
-                idx = sel.index[0]
+                # แต่เวลาบันทึก เราต้องหา index จริงจาก df_raw (ข้อมูลดิบ)
+                # เพื่อให้บันทึกถูกแถว
+                idx = sel.index[0] # index ใน display กับ raw ตรงกันเพราะ copy มา
                 row = sel.iloc[0]
                 
                 current_status = clean_val(row.get('Status'))
@@ -538,16 +539,20 @@ def officer_dashboard():
                             new_log = f"[{get_now_th().strftime('%d/%m/%Y %H:%M')}] แก้ไขโดย {user['name']}"
                             old_log = clean_val(row.get('Audit_Log'))
                             
-                            df.at[idx, 'Victim'] = v_vic
-                            df.at[idx, 'Accused'] = v_acc
-                            df.at[idx, 'Witness'] = v_wit
-                            df.at[idx, 'Teacher_Investigator'] = v_tea
-                            df.at[idx, 'Student_Police_Investigator'] = v_stu
-                            df.at[idx, 'Statement'] = v_stmt
-                            df.at[idx, 'Status'] = v_sta
-                            df.at[idx, 'Evidence_Image'] = final_img
-                            df.at[idx, 'Audit_Log'] = f"{old_log}\n{new_log}" if old_log else new_log
-                            conn.update(data=df)
+                            # อัปเดตลง df_raw (ข้อมูลดิบ) ไม่ใช่ df_display
+                            df_raw.at[idx, 'Victim'] = v_vic
+                            df_raw.at[idx, 'Accused'] = v_acc
+                            df_raw.at[idx, 'Witness'] = v_wit
+                            df_raw.at[idx, 'Teacher_Investigator'] = v_tea
+                            df_raw.at[idx, 'Student_Police_Investigator'] = v_stu
+                            df_raw.at[idx, 'Statement'] = v_stmt
+                            df_raw.at[idx, 'Status'] = v_sta
+                            df_raw.at[idx, 'Evidence_Image'] = final_img
+                            df_raw.at[idx, 'Audit_Log'] = f"{old_log}\n{new_log}" if old_log else new_log
+                            
+                            # เติม fillna กันตายก่อนส่งกลับ
+                            df_raw = df_raw.fillna("")
+                            conn.update(data=df_raw)
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
@@ -616,7 +621,8 @@ def main_page():
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/แอลกอฮอ", "พกอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "ข่มขู่/บูลลี่/ด่าทอบนออนไลน์", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            # [UPDATE] เพิ่ม Placeholder ตรงนี้
+            
+            # [PLACEHOLDER ADDED]
             det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ตัวอย่างการกรอก เกิดเหตุอะไร ที่ใด ใครเป็นคนกระทำความผิด(ถ้าทราบ)"))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
@@ -645,16 +651,16 @@ def main_page():
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    # --- [CRITICAL FIX] บังคับอ่านข้อมูลสด + ซ่อมคอลัมน์ ก่อนบันทึก ---
+                    # --- [SAFETY FIX] อ่านข้อมูลดิบ + ห้ามซ่อมคอลัมน์ ---
                     df_old = conn.read(ttl="0") 
-                    df_old = safe_ensure_columns(df_old)
                     # ----------------------------------------------------------------
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
                     
+                    # เติมค่าว่างใน new_data ให้ครบตาม df_old (ป้องกัน concat แล้วคอลัมน์เบี้ยว)
                     for c in df_old.columns:
                         if c not in new_data.columns: new_data[c] = ""
                     
-                    # [API ERROR FIX] เติมค่าว่างแทน NaN ก่อนส่ง
+                    # รวมร่างและเติมค่าว่างทั้งหมด (แก้ API Error)
                     combined_df = pd.concat([df_old, new_data], ignore_index=True)
                     combined_df = combined_df.fillna("")
                     
@@ -676,13 +682,13 @@ def main_page():
         if st.button("🔎 ค้นหา", use_container_width=True):
             if len(search_code) == 4 and search_code.isdigit():
                 try:
-                    # --- [CRITICAL FIX] บังคับอ่านข้อมูลสด + ซ่อมคอลัมน์ ก่อนค้นหา ---
-                    df = conn.read(ttl="0")
-                    df = safe_ensure_columns(df)
-                    # ----------------------------------------------------------------
-                    df = df.fillna("")
-                    df['Report_ID'] = df['Report_ID'].astype(str)
-                    match = df[df['Report_ID'].str.endswith(search_code)]
+                    # --- [SAFETY FIX] อ่านข้อมูลดิบ + ซ่อมเพื่อแสดงผลเท่านั้น ---
+                    df_raw = conn.read(ttl="0")
+                    df_display = safe_ensure_columns_for_view(df_raw.copy())
+                    # ------------------------------------------------------------
+                    df_display = df_display.fillna("")
+                    df_display['Report_ID'] = df_display['Report_ID'].astype(str)
+                    match = df_display[df_display['Report_ID'].str.endswith(search_code)]
                     
                     if not match.empty:
                         for idx, row in match.iterrows():
