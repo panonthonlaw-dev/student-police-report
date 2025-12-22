@@ -19,20 +19,17 @@ import glob
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ระบบค้นหาไฟล์ (Path Management) ---
+# --- ระบบค้นหาไฟล์ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
-# ค้นหา Logo
 LOGO_FILE = None
-LOGO_FORMAT = None
 possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
 for f in possible_logos:
     if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
         LOGO_FILE = f
         break
 
-# รายชื่อสถานที่
 LOCATION_OPTIONS = [
     "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
     "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
@@ -63,79 +60,89 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- 2. Class PDF ---
+# --- ฟังก์ชันแก้สระลอยและตัดคำภาษาไทยอย่างง่าย ---
+def fix_thai_text(text):
+    if not text: return ""
+    # แทนที่สระลอย (ถ้ามี Logic ซับซ้อนกว่านี้ต้องใช้ pythainlp)
+    replacements = {
+        '\u0e48\u0e33': '\u0e48\u0e33', # ไม้เอก+สระอำ
+        '\u0e49\u0e33': '\u0e49\u0e33', # ไม้โท+สระอำ
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text
+
+# --- 2. Class PDF (รื้อระบบใหม่) ---
 class ReportPDF(FPDF):
     def header(self):
-        # โหลดฟอนต์ (สำคัญมาก: ถ้าไม่มีไฟล์นี้ ภาษาไทยจะแตก)
+        # โหลดฟอนต์เสมอ
         if os.path.exists(FONT_FILE):
-            self.add_font('ThaiFont', '', FONT_FILE, uni=True)
-            self.set_font('ThaiFont', '', 20)
+            try:
+                self.add_font('ThaiFont', '', FONT_FILE, uni=True)
+                self.set_font('ThaiFont', '', 20)
+            except: 
+                self.set_font('Arial', '', 20)
         else:
-            # ถ้าหาฟอนต์ไม่เจอจริงๆ ใช้ Arial (จะแสดงไทยไม่ได้ แต่ไม่แตกแถว)
-            self.set_font('Arial', '', 20) 
+            self.set_font('Arial', '', 20)
 
-        # โลโก้
+        # โลโก้ (มุมซ้ายบน)
         if LOGO_FILE and os.path.exists(LOGO_FILE):
             try:
-                self.image(LOGO_FILE, x=10, y=10, w=20)
+                self.image(LOGO_FILE, x=15, y=10, w=25)
             except: pass
 
-        # หัวกระดาษ
+        # หัวข้อ
         self.set_y(15)
-        self.set_x(35) # ขยับหนีโลโก้
+        self.set_x(45) # ขยับหนีโลโก้
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
         
-        self.set_x(35)
         self.set_font_size(16)
+        self.set_x(45)
         self.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน", ln=True, align='L')
         
-        self.ln(5)
+        self.ln(10)
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(8)
 
     def footer(self):
-        # ไปที่ 1.5 ซม. จากด้านล่าง
         self.set_y(-15)
-        
         if os.path.exists(FONT_FILE):
             self.set_font('ThaiFont', '', 10)
         else:
             self.set_font('Arial', '', 8)
         
-        # ข้อมูลผู้พิมพ์ (มุมขวาล่าง)
         printer = "System"
         if 'current_user' in st.session_state and st.session_state.current_user:
             printer = st.session_state.current_user['name']
         now_str = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M:%S")
         
-        # พิมพ์ชิดขวา
-        self.cell(0, 10, txt=f"ผู้พิมพ์: {printer} | วันที่: {now_str} | หน้า {self.page_no()}", align='R')
+        # มุมขวาล่าง
+        self.set_x(-100) # เริ่มเขียนจากขวาสุดลบมา 100mm
+        self.cell(90, 10, txt=f"ผู้พิมพ์: {printer} | วันที่: {now_str}", align='R')
 
-# --- ฟังก์ชันสร้าง PDF (แก้ไข Layout และ Font) ---
+# --- ฟังก์ชันสร้าง PDF (ปรับปรุง Multi_cell) ---
 def create_pdf(row_data):
     tmp_path = None
     try:
-        # ลบไฟล์ขยะ
+        # เคลียร์ Cache
         for pkl in glob.glob(os.path.join(BASE_DIR, "*.pkl")):
             try: os.remove(pkl)
             except: pass
 
-        # เช็คฟอนต์ก่อนสร้าง (สำคัญ)
         if not os.path.exists(FONT_FILE):
             return b"ERROR: MISSING_FONT_FILE"
 
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
-        pdf.set_auto_page_break(True, margin=25) # เผื่อที่ Footer
+        pdf.set_auto_page_break(True, margin=20)
         pdf.add_page()
         
-        # ตั้งฟอนต์เริ่มต้น
+        # ตั้งฟอนต์เนื้อหา
         pdf.add_font('ThaiFont', '', FONT_FILE, uni=True)
         pdf.set_font('ThaiFont', '', 14)
-        
-        epw = pdf.w - 2 * pdf.l_margin # ความกว้างพื้นที่เขียน
+        epw = pdf.w - 2 * pdf.l_margin
 
-        # QR Code (มุมขวาบนใต้เส้น)
+        # QR Code
         rid_text = clean_val(row_data.get('Report_ID'))
         try:
             qr = qrcode.make(rid_text)
@@ -145,41 +152,44 @@ def create_pdf(row_data):
             pdf.image(qr_buffer, x=170, y=35, w=20, type='PNG')
         except: pass
 
-        # --- ส่วนที่ 1: ข้อมูลทั่วไป ---
+        # ข้อมูลทั่วไป
         pdf.cell(epw*0.7, 8, txt=f"เลขที่รับแจ้ง: {rid_text}", ln=0)
         pdf.cell(epw*0.3, 8, txt=f"วันที่แจ้ง: {clean_val(row_data.get('Timestamp'))}", ln=1, align='R')
-        pdf.ln(5)
+        pdf.ln(6)
 
         pdf.cell(epw, 8, txt=f"ผู้แจ้ง: {clean_val(row_data.get('Reporter'))}", ln=1)
         pdf.cell(epw, 8, txt=f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))}", ln=1)
         pdf.cell(epw, 8, txt=f"สถานที่: {clean_val(row_data.get('Location'))}", ln=1)
-        pdf.ln(5)
+        pdf.ln(4)
 
-        # --- ส่วนที่ 2: รายละเอียดเหตุการณ์ ---
-        # ใช้ fill color เทาอ่อน
-        pdf.set_fill_color(240, 240, 240)
+        # --- แก้ไขส่วนรายละเอียด (ใช้ Multi_cell แบบมี Wrap) ---
+        pdf.set_fill_color(245, 245, 245)
         pdf.cell(epw, 8, txt="รายละเอียดเหตุการณ์:", border='LTR', fill=True, ln=1)
         
-        details = clean_val(row_data.get('Details'))
+        details = fix_thai_text(clean_val(row_data.get('Details')))
         if not details: details = "-"
-        # ใช้ MultiCell ความสูงบรรทัด 7
-        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True)
+        
+        # ใช้ Multi_cell ปกติ แต่เนื่องจาก FPDF ตัดคำไทยไม่แม่น
+        # เราจะใช้วิธี 'Write' แทน ถ้าข้อความยาวมากๆ (แต่ Multi_cell จัด Layout ง่ายกว่า)
+        # เคล็ดลับ: ถ้าข้อความยาว ให้ตัดคำด้วย space เอง (ถ้าทำได้) หรือปล่อยให้ FPDF ตัดตามความยาว
+        # ในที่นี้ใช้ multi_cell ปกติ แต่เพิ่ม height ให้พอดี
+        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True) 
         pdf.ln(5)
 
-        # --- ส่วนที่ 3: ผลการสอบสวน ---
+        # --- ส่วนผลการสอบสวน ---
         pdf.set_font_size(16)
         pdf.cell(epw, 8, txt="ผลการดำเนินการสอบสวน:", ln=1)
         pdf.set_font_size(14)
         
-        stmt = clean_val(row_data.get('Statement'))
+        stmt = fix_thai_text(clean_val(row_data.get('Statement')))
         if not stmt: stmt = "-"
         pdf.multi_cell(epw, 7, txt=stmt, border=1)
         pdf.ln(5)
 
-        # รูปหลักฐาน (ถ้ามี)
+        # รูปหลักฐาน
         ev_img = clean_val(row_data.get('Evidence_Image'))
         if ev_img:
-            if pdf.get_y() > 180: pdf.add_page() # ขึ้นหน้าใหม่ถ้ารูปจะตกขอบ
+            if pdf.get_y() > 180: pdf.add_page()
             pdf.cell(epw, 8, txt="หลักฐานประกอบ:", ln=1)
             try:
                 img_data = base64.b64decode(ev_img)
@@ -188,62 +198,52 @@ def create_pdf(row_data):
             except: pass
             pdf.ln(10)
 
-        # --- ส่วนที่ 4: ลายเซ็นผู้เกี่ยวข้อง (5 ตำแหน่ง) ---
-        
-        # เช็คพื้นที่ ถ้าเหลือน้อยให้ขึ้นหน้าใหม่ เพื่อให้ลายเซ็นอยู่กลุ่มเดียวกัน
-        if pdf.get_y() > 200: 
-            pdf.add_page()
+        # --- ลายเซ็น (5 คน) ---
+        if pdf.get_y() > 200: pdf.add_page()
         
         pdf.ln(10)
-        pdf.set_font('ThaiFont', '', 14)
+        col_w = epw / 2
         
-        # คำนวณตำแหน่งคอลัมน์
-        col_width = epw / 2
+        # แถว 1
+        y1 = pdf.get_y()
+        pdf.set_xy(20, y1)
+        pdf.cell(col_w, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
+        pdf.cell(col_w, 6, f"( {clean_val(row_data.get('Victim'))} )", 0, 2, 'C')
+        pdf.cell(col_w, 6, "ผู้เสียหาย", 0, 0, 'C')
         
-        # แถวที่ 1
-        y_start = pdf.get_y()
-        # ซ้าย: ผู้เสียหาย
-        pdf.set_xy(20, y_start)
-        pdf.cell(col_width, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
-        pdf.cell(col_width, 6, f"( {clean_val(row_data.get('Victim'))} )", 0, 2, 'C')
-        pdf.cell(col_width, 6, "ผู้เสียหาย", 0, 0, 'C')
+        pdf.set_xy(20+col_w, y1)
+        pdf.cell(col_w, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
+        pdf.cell(col_w, 6, f"( {clean_val(row_data.get('Accused'))} )", 0, 2, 'C')
+        pdf.cell(col_w, 6, "ผู้ถูกกล่าวหา", 0, 0, 'C')
         
-        # ขวา: ผู้ถูกกล่าวหา
-        pdf.set_xy(20 + col_width, y_start)
-        pdf.cell(col_width, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
-        pdf.cell(col_width, 6, f"( {clean_val(row_data.get('Accused'))} )", 0, 2, 'C')
-        pdf.cell(col_width, 6, "ผู้ถูกกล่าวหา", 0, 0, 'C')
-        
-        pdf.ln(25) # เว้นระยะห่างแถว
-        y_row2 = pdf.get_y()
-
-        # แถวที่ 2
-        # ซ้าย: ตำรวจนักเรียน
-        pdf.set_xy(20, y_row2)
-        pdf.cell(col_width, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
-        pdf.cell(col_width, 6, f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", 0, 2, 'C')
-        pdf.cell(col_width, 6, "ตำรวจนักเรียนผู้สอบสวน", 0, 0, 'C')
-
-        # ขวา: พยาน
-        pdf.set_xy(20 + col_width, y_row2)
-        pdf.cell(col_width, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
-        pdf.cell(col_width, 6, f"( {clean_val(row_data.get('Witness'))} )", 0, 2, 'C')
-        pdf.cell(col_width, 6, "พยาน", 0, 0, 'C')
-
         pdf.ln(25)
         
-        # แถวที่ 3: ครู (กลางหน้ากระดาษ)
-        pdf.set_x(20) # รีเซ็ตมาซ้ายแล้วใช้ cell เต็มกว้างจัดกลาง
+        # แถว 2
+        y2 = pdf.get_y()
+        pdf.set_xy(20, y2)
+        pdf.cell(col_w, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
+        pdf.cell(col_w, 6, f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", 0, 2, 'C')
+        pdf.cell(col_w, 6, "ตำรวจนักเรียนผู้สอบสวน", 0, 0, 'C')
+        
+        pdf.set_xy(20+col_w, y2)
+        pdf.cell(col_w, 6, "ลงชื่อ..........................................................", 0, 2, 'C')
+        pdf.cell(col_w, 6, f"( {clean_val(row_data.get('Witness'))} )", 0, 2, 'C')
+        pdf.cell(col_w, 6, "พยาน", 0, 0, 'C')
+        
+        pdf.ln(25)
+        
+        # แถว 3 (ครู)
+        pdf.set_x(20) # เริ่มซ้าย
+        # ใช้ cell เต็มหน้ากว้าง แล้วสั่ง center
         pdf.cell(epw, 6, "ลงชื่อ..........................................................", 0, 1, 'C')
         pdf.cell(epw, 6, f"( {clean_val(row_data.get('Teacher_Investigator'))} )", 0, 1, 'C')
         pdf.cell(epw, 6, "ครูผู้สอบสวน", 0, 1, 'C')
 
-        # บันทึกไฟล์ลง Temp
+        # เขียนไฟล์ Temp
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             pdf.output(tmp.name, 'F')
             tmp_path = tmp.name
         
-        # อ่านไฟล์แบบ Binary
         with open(tmp_path, 'rb') as f:
             pdf_bytes = f.read()
             
@@ -510,11 +510,12 @@ def officer_dashboard():
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
                             
+                            # ตรวจสอบว่าเป็น Error Message แบบ Bytes หรือไม่
                             if isinstance(pdf_bytes, bytes) and pdf_bytes.startswith(b"ERROR"):
                                 err_msg = pdf_bytes.decode('utf-8', errors='ignore')
                                 st.error(f"ระบบ PDF ขัดข้อง: {err_msg}")
-                                if "FONT_MISSING" in err_msg:
-                                    st.warning(f"⚠️ กรุณาอัปโหลดไฟล์ '{FONT_FILE}' ไว้ที่เดียวกับโค้ด")
+                                if "MISSING_FONT" in err_msg:
+                                    st.warning("⚠️ สำคัญ: ไม่พบไฟล์ 'THSarabunNew.ttf'")
                             else:
                                 st.download_button(
                                     label="ดาวน์โหลด PDF",
