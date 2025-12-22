@@ -434,7 +434,7 @@ def main_page():
             
             # --- ส่วน PDPA และ คำเตือนกฎหมาย ---
             st.markdown("---")
-            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บรวบรวมข้อมูลเพื่อใช้ในการดำเนินงานของสถานีตำรวจนักเรียน")
+            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บรวบรวมข้อมูลเพื่อใช้ในการดำเนินงานของสถานีตำรวจนักเรียนและข้อมูลท่านจะไม่ถูกเปิดเผยต่อคู่กรณี")
             
             st.markdown("""
                 <div style='background-color: #ffebee; padding: 10px; border-radius: 5px; border-left: 5px solid #ef5350;'>
