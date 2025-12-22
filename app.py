@@ -13,7 +13,7 @@ from PIL import Image
 import io
 
 # --- 1. ตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="ระบบแจ้งความตำรวจนักเรียน", page_icon="👮‍♂️", layout="wide")
+st.set_page_config(page_title="ระบบแจ้งเหตุตำรวจนักเรียน", page_icon="👮‍♂️", layout="wide")
 
 LOGO_FILE = "school_logo.png"
 FONT_FILE = "THSarabunNew.ttf"
@@ -150,7 +150,7 @@ def create_pdf(row_data):
         # แถว 3 (ครู)
         pdf.cell(epw, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
-        pdf.cell(epw, 6, txt="ครูผู้สอบสวน / หัวหน้างานปกครอง", align='C', ln=1)
+        pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
         return pdf.output()
     except Exception as e: return f"ERROR: {str(e)}"
@@ -227,7 +227,7 @@ def render_case_list(df_subset, list_type):
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบจัดการ (คุณ{user['name']})</div>", unsafe_allow_html=True)
+    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน (คุณ{user['name']})</div>", unsafe_allow_html=True)
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
@@ -307,7 +307,7 @@ def officer_dashboard():
 
             # --- TAB 2: แดชบอร์ดสถิติ ---
             with tab_dash:
-                st.subheader("📊 สรุปสถิติสถานีตำรวจนักเรียน")
+                st.subheader("📊 สรุปสถิติสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา")
                 
                 if not df.empty:
                     total_cases = len(df)
@@ -371,7 +371,7 @@ def officer_dashboard():
                     st.write("#### ✍️ บันทึกผลการสอบสวน")
                     
                     if is_locked and is_finished and is_admin:
-                        st.markdown("<div style='color:red;'>🔒 เคสนี้ดำเนินการเรียบร้อยแล้ว (แอดมินใส่รหัสปลดล็อคเพื่อแก้ไข)</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='color:red;'>🔒 เคสนี้ดำเนินการเรียบร้อยแล้ว (ใช้รหัสเจ้าหน้าที่ระดับสูงสุด)</div>", unsafe_allow_html=True)
                         cpwd, cbtn = st.columns([3, 1])
                         pwd_in = cpwd.text_input("รหัสปลดล็อค", type="password")
                         if cbtn.button("ปลดล็อค"):
