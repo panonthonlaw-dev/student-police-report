@@ -168,18 +168,24 @@ def back_to_list():
 def clear_search_callback():
     st.session_state.search_query = ""
 
-# ฟังก์ชันแบ่งหน้า (Pagination)
-def get_pagination(key, total_items, limit=5):
-    if key not in st.session_state: st.session_state[key] = 1
-    current_page = st.session_state[key]
-    total_pages = math.ceil(total_items / limit)
-    if total_pages == 0: total_pages = 1
-    if current_page > total_pages: 
-        current_page = 1
+# ฟังก์ชันคำนวณหน้า (Pagination Logic)
+def calculate_pagination(key, total_items, limit=5):
+    # ตรวจสอบว่ามี State หรือยัง
+    if key not in st.session_state:
         st.session_state[key] = 1
     
+    current_page = st.session_state[key]
+    total_pages = math.ceil(total_items / limit)
+    
+    # ป้องกันหน้าเกินจำนวนจริง
+    if total_pages == 0: total_pages = 1
+    if current_page > total_pages:
+        current_page = 1
+        st.session_state[key] = 1
+        
     start_idx = (current_page - 1) * limit
     end_idx = start_idx + limit
+    
     return start_idx, end_idx, current_page, total_pages
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -197,7 +203,7 @@ def render_case_list(df_subset, list_type):
     st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
     if df_subset.empty:
-        st.caption("ไม่มีรายการ")
+        st.caption("ไม่มีรายการในหน้านี้")
         return
 
     for index, row in df_subset.iterrows():
@@ -208,6 +214,7 @@ def render_case_list(df_subset, list_type):
         cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
         with cc1:
             btn_txt = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
+            # ใช้ key ที่ไม่ซ้ำกันตาม list_type
             st.button(btn_txt, key=f"btn_{list_type}_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
         with cc2: st.write(row.get('Timestamp', '-'))
         with cc3: st.write(row.get('Incident_Type', '-'))
@@ -234,7 +241,7 @@ def officer_dashboard():
             # --- สร้าง Tabs ---
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
             
-            # --- TAB 1: รายการแจ้งเหตุ (พร้อม Pagination) ---
+            # --- TAB 1: รายการแจ้งเหตุ (พร้อม Pagination แยกอิสระ) ---
             with tab_list:
                 c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
                 with c_search:
@@ -250,38 +257,59 @@ def officer_dashboard():
                 df_pending = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
                 df_finished = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
 
-                # --- 1. รายการรอ (Pagination) ---
-                st.markdown("<h4 style='color:#1E3A8A;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
-                start_p, end_p, curr_p, tot_p = get_pagination('page_pending', len(df_pending), 5)
+                # ==========================================
+                # ส่วนที่ 1: รายการรอ (Pagination แยก: page_pending)
+                # ==========================================
+                st.markdown("<h4 style='color:#1E3A8A; background-color:#f0f2f6; padding:10px; border-radius:5px;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
+                
+                # คำนวณหน้าสำหรับ Pending
+                start_p, end_p, curr_p, tot_p = calculate_pagination('page_pending', len(df_pending), 5)
+                
+                # แสดงรายการ
                 render_case_list(df_pending.iloc[start_p:end_p], "pending")
                 
+                # ปุ่มควบคุม Pending (ใช้ key เฉพาะกลุ่ม)
                 if tot_p > 1:
                     cp1, cp2, cp3 = st.columns([1, 2, 1])
                     with cp1: 
-                        if st.button("⬅️ ก่อนหน้า", key="p_prev"): st.session_state.page_pending -= 1; st.rerun()
-                    with cp2: st.markdown(f"<div style='text-align:center'>หน้า {curr_p} / {tot_p}</div>", unsafe_allow_html=True)
+                        if st.button("⬅️ ย้อนกลับ (รอ)", key="btn_prev_pending", disabled=(curr_p==1)): 
+                            st.session_state.page_pending -= 1; st.rerun()
+                    with cp2: 
+                        st.markdown(f"<div style='text-align:center; font-weight:bold; color:#555;'>หน้า {curr_p} / {tot_p}</div>", unsafe_allow_html=True)
                     with cp3: 
-                        if st.button("ถัดไป ➡️", key="p_next", disabled=(curr_p==tot_p)): st.session_state.page_pending += 1; st.rerun()
+                        if st.button("ถัดไป (รอ) ➡️", key="btn_next_pending", disabled=(curr_p==tot_p)): 
+                            st.session_state.page_pending += 1; st.rerun()
 
-                # --- 2. รายการเสร็จ (Pagination) ---
-                st.markdown("<br><h4 style='color:#2e7d32;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
-                start_f, end_f, curr_f, tot_f = get_pagination('page_finished', len(df_finished), 5)
+                st.markdown("---") # เส้นคั่นชัดเจน
+
+                # ==========================================
+                # ส่วนที่ 2: รายการเสร็จ (Pagination แยก: page_finished)
+                # ==========================================
+                st.markdown("<h4 style='color:#2e7d32; background-color:#e8f5e9; padding:10px; border-radius:5px;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
+                
+                # คำนวณหน้าสำหรับ Finished
+                start_f, end_f, curr_f, tot_f = calculate_pagination('page_finished', len(df_finished), 5)
+                
+                # แสดงรายการ
                 render_case_list(df_finished.iloc[start_f:end_f], "finished")
 
+                # ปุ่มควบคุม Finished (ใช้ key เฉพาะกลุ่ม)
                 if tot_f > 1:
                     cf1, cf2, cf3 = st.columns([1, 2, 1])
                     with cf1: 
-                        if st.button("⬅️ ก่อนหน้า", key="f_prev"): st.session_state.page_finished -= 1; st.rerun()
-                    with cf2: st.markdown(f"<div style='text-align:center'>หน้า {curr_f} / {tot_f}</div>", unsafe_allow_html=True)
+                        if st.button("⬅️ ย้อนกลับ (เสร็จ)", key="btn_prev_finished", disabled=(curr_f==1)): 
+                            st.session_state.page_finished -= 1; st.rerun()
+                    with cf2: 
+                        st.markdown(f"<div style='text-align:center; font-weight:bold; color:#555;'>หน้า {curr_f} / {tot_f}</div>", unsafe_allow_html=True)
                     with cf3: 
-                        if st.button("ถัดไป ➡️", key="f_next", disabled=(curr_f==tot_f)): st.session_state.page_finished += 1; st.rerun()
+                        if st.button("ถัดไป (เสร็จ) ➡️", key="btn_next_finished", disabled=(curr_f==tot_f)): 
+                            st.session_state.page_finished += 1; st.rerun()
 
-            # --- TAB 2: แดชบอร์ดสถิติ (พร้อม Text Summary) ---
+            # --- TAB 2: แดชบอร์ดสถิติ ---
             with tab_dash:
                 st.subheader("📊 สรุปสถิติสถานีตำรวจนักเรียน")
                 
                 if not df.empty:
-                    # 1. ส่วน Metric สรุปตัวเลข
                     total_cases = len(df)
                     top_loc = df['Location'].mode()[0] if not df['Location'].mode().empty else "-"
                     top_inc = df['Incident_Type'].mode()[0] if not df['Incident_Type'].mode().empty else "-"
@@ -293,7 +321,6 @@ def officer_dashboard():
 
                     st.markdown("---")
                     
-                    # 2. ส่วนสรุปแบบ Text (ดูง่ายๆ)
                     c_text1, c_text2 = st.columns(2)
                     with c_text1:
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
@@ -308,13 +335,10 @@ def officer_dashboard():
                             st.write(f"- **{inc}**: {count} ครั้ง")
 
                     st.markdown("---")
-                    
-                    # 3. ส่วนกราฟ
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("**🔹 แผนภูมิวงกลม: สัดส่วนประเภทเหตุ**")
-                        st.bar_chart(type_counts, color="#FF4B4B") # ใช้ Bar chart แทน pie เพราะ Streamlit standard สวยกว่า
-                    
+                        st.bar_chart(type_counts, color="#FF4B4B")
                     with col2:
                         st.markdown("**🔹 กราฟแท่ง: สถิติสถานที่เกิดเหตุ**")
                         st.bar_chart(df['Location'].value_counts(), color="#1E3A8A")
@@ -401,7 +425,7 @@ def officer_dashboard():
 
     except Exception as e: st.error(f"Error: {e}")
 
-# --- 5. หน้าหลักสำหรับนักเรียน (เพิ่มแท็บค้นหา) ---
+# --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
@@ -415,10 +439,7 @@ def main_page():
         with st.form("report_form"):
             rep = st.text_input("ชื่อผู้แจ้ง *")
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
-            
-            # Dropdown สถานที่ตามที่ระบุ
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            
             det = st.text_area("รายละเอียดเหตุการณ์ *")
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
@@ -437,7 +458,6 @@ def main_page():
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะการดำเนินงาน")
         st.markdown("กรอก **เลข 4 ตัวท้าย** ของรหัสรับแจ้ง (เช่น 5929) เพื่อตรวจสอบสถานะ")
-        
         search_code = st.text_input("เลข 4 ตัวท้าย", max_chars=4, placeholder="ตัวอย่าง: 5929")
         
         if st.button("🔎 ค้นหา", use_container_width=True):
@@ -446,7 +466,6 @@ def main_page():
                     df = conn.read(ttl="1m")
                     df = df.fillna("")
                     df['Report_ID'] = df['Report_ID'].astype(str)
-                    
                     match = df[df['Report_ID'].str.endswith(search_code)]
                     
                     if not match.empty:
@@ -455,13 +474,11 @@ def main_page():
                                 st.markdown(f"#### 📌 เลขที่รับแจ้ง: {row['Report_ID']}")
                                 c1, c2 = st.columns(2)
                                 c1.write(f"**ประเภทเหตุ:** {row['Incident_Type']}")
-                                
                                 status = row['Status']
                                 color = "orange"
                                 if status == "ดำเนินการเรียบร้อย": color = "green"
                                 elif status == "อยู่ระหว่างการดำเนินการ": color = "blue"
                                 elif status == "ยกเลิก": color = "red"
-                                
                                 c2.markdown(f"**สถานะ:** <span style='color:{color};font-weight:bold'>{status}</span>", unsafe_allow_html=True)
                                 st.caption(f"อัปเดตล่าสุด: {row.get('Timestamp')}")
                     else:
