@@ -18,7 +18,7 @@ from PIL import Image
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ค้นหาไฟล์ (Font & Logo) ---
+# --- ค้นหาไฟล์ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
@@ -653,8 +653,12 @@ def main_page():
                     
                     for c in df_old.columns:
                         if c not in new_data.columns: new_data[c] = ""
-                        
-                    conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
+                    
+                    # [API ERROR FIX] เติมค่าว่างแทน NaN ก่อนส่ง
+                    combined_df = pd.concat([df_old, new_data], ignore_index=True)
+                    combined_df = combined_df.fillna("")
+                    
+                    conn.update(data=combined_df)
                     st.cache_data.clear()
                     
                     st.session_state.last_submit_time = datetime.now()
