@@ -18,7 +18,7 @@ from PIL import Image
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ค้นหาไฟล์ (Font & Logo) ---
+# --- ค้นหาไฟล์ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
@@ -80,8 +80,8 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- [CRITICAL FIX] ฟังก์ชันป้องกัน Error หาก Sheet ว่าง/หัวตารางหาย ---
-def ensure_columns(df):
+# --- [SAFETY FIX] ฟังก์ชันตรวจสอบคอลัมน์แบบปลอดภัย (ไม่ลบข้อมูล) ---
+def safe_ensure_columns(df):
     required_cols = [
         'Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 
         'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 
@@ -89,14 +89,14 @@ def ensure_columns(df):
         'Statement', 'Evidence_Image'
     ]
     
-    # 1. ถ้า DataFrame ว่างเปล่า ให้สร้างใหม่พร้อมหัวตาราง
-    if df.empty:
+    # ถ้า DataFrame ว่างจริง (ไม่มีแถวและไม่มีคอลัมน์) ค่อยสร้าง Header ใหม่
+    if df is None:
         return pd.DataFrame(columns=required_cols)
-    
-    # 2. ลบช่องว่างหัวท้ายในชื่อคอลัมน์ (แก้ปัญหา 'Report_ID ' ไม่ตรงกับ 'Report_ID')
+        
+    # แก้ชื่อคอลัมน์ที่มีช่องว่าง
     df.columns = df.columns.str.strip()
     
-    # 3. ถ้ามีข้อมูล แต่ขาดบางคอลัมน์ ให้เติมคอลัมน์ที่ขาดด้วยค่าว่าง
+    # เติมเฉพาะคอลัมน์ที่ขาด (ไม่แตะต้องข้อมูลที่มีอยู่)
     for col in required_cols:
         if col not in df.columns:
             df[col] = ""
@@ -352,9 +352,9 @@ def officer_dashboard():
             st.session_state.current_user = None; st.rerun()
 
     try:
-        df = conn.read(ttl="1m")
-        # [CRITICAL FIX] ใส่ ensure_columns ทุกครั้งหลัง read
-        df = ensure_columns(df)
+        # [UPDATE] บังคับโหลดใหม่ (ttl=0) และใช้ safe_ensure_columns
+        df = conn.read(ttl="0")
+        df = safe_ensure_columns(df)
         df = df.fillna("")
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
@@ -644,15 +644,15 @@ def main_page():
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    # --- [CRITICAL FIX] ใส่ ensure_columns ตรงนี้ด้วย ---
-                    df_old = conn.read(ttl="1m")
-                    df_old = ensure_columns(df_old)
-                    # --------------------------------------------------
+                    # --- [CRITICAL FIX] บังคับอ่านข้อมูลสด + ซ่อมคอลัมน์ ก่อนบันทึก ---
+                    df_old = conn.read(ttl="0") 
+                    df_old = safe_ensure_columns(df_old)
+                    # ----------------------------------------------------------------
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
                     
                     for c in df_old.columns:
                         if c not in new_data.columns: new_data[c] = ""
-                    
+                        
                     conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
                     st.cache_data.clear()
                     
@@ -671,10 +671,10 @@ def main_page():
         if st.button("🔎 ค้นหา", use_container_width=True):
             if len(search_code) == 4 and search_code.isdigit():
                 try:
-                    df = conn.read(ttl="1m")
-                    # --- [CRITICAL FIX] ใส่ ensure_columns ตรงนี้ด้วย ---
-                    df = ensure_columns(df)
-                    # --------------------------------------------------
+                    # --- [CRITICAL FIX] บังคับอ่านข้อมูลสด + ซ่อมคอลัมน์ ก่อนค้นหา ---
+                    df = conn.read(ttl="0")
+                    df = safe_ensure_columns(df)
+                    # ----------------------------------------------------------------
                     df = df.fillna("")
                     df['Report_ID'] = df['Report_ID'].astype(str)
                     match = df[df['Report_ID'].str.endswith(search_code)]
