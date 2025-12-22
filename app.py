@@ -66,41 +66,37 @@ def sanitize_input(text):
         return str(text).replace("=", "").replace('"', "").replace("'", "").strip()
     return text
 
-# --- [UPDATE แก้ปัญหา Error 50000 characters] ---
 def process_image(img_file):
     if img_file is None: return ""
     try:
         img = Image.open(img_file)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
-        
-        # ตั้งค่าเริ่มต้น
-        max_size = 800
-        quality = 65
-        
-        while True:
-            # รีไซส์
-            img_copy = img.copy()
-            img_copy.thumbnail((max_size, max_size))
-            
-            buffer = io.BytesIO()
-            img_copy.save(buffer, format="JPEG", quality=quality, optimize=True)
-            b64_str = base64.b64encode(buffer.getvalue()).decode()
-            
-            # เช็คว่าเกินลิมิต Google Sheets (50,000 chars) หรือไม่
-            # เผื่อที่ไว้หน่อย ตัดที่ 49,000
-            if len(b64_str) < 49000:
-                return b64_str
-            
-            # ถ้ายังเกิน ให้ลดขนาดและคุณภาพลงอีก
-            max_size = int(max_size * 0.7)
-            quality = int(quality - 5)
-            
-            # ถ้าเล็กลงจนภาพดูไม่ได้แล้ว ให้เลิกทำ (ป้องกัน Loop ตาย)
-            if max_size < 200 or quality < 10:
-                return "" # ยอมแพ้ ไม่บันทึกรูปดีกว่าโปรแกรม Error
-                
+        img.thumbnail((800, 800))
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=65, optimize=True)
+        return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
+
+# --- [UPDATE] ฟังก์ชันป้องกัน Error หาก Sheet ว่าง ---
+def ensure_columns(df):
+    required_cols = [
+        'Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 
+        'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 
+        'Accused', 'Witness', 'Teacher_Investigator', 'Student_Police_Investigator', 
+        'Statement', 'Evidence_Image'
+    ]
+    
+    # ถ้า DataFrame ว่างเปล่า ให้สร้างใหม่พร้อมหัวตาราง
+    if df.empty:
+        return pd.DataFrame(columns=required_cols)
+    
+    # ถ้ามีข้อมูล แต่ขาดบางคอลัมน์ ให้เติมคอลัมน์ที่ขาดด้วยค่าว่าง
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = ""
+            
+    return df
 
 # --- รายชื่อสถานที่ ---
 LOCATION_OPTIONS = [
@@ -113,7 +109,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
+# --- ฟังก์ชันสร้าง PDF ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -176,7 +172,7 @@ def create_pdf(row):
             body {{
                 font-family: 'THSarabunNew';
                 font-size: 16pt;
-                line-height: 1.2;
+                line-height: 1.3;
             }}
             .header {{
                 text-align: center;
@@ -221,7 +217,7 @@ def create_pdf(row):
                 padding: 10px;
                 margin-bottom: 10px;
                 min-height: 50px;
-                word-wrap: break-word; 
+                white-space: pre-wrap; 
             }}
             .signature-table {{
                 width: 100%;
@@ -322,6 +318,7 @@ def calculate_pagination(key, total_items, limit=5):
     end_idx = start_idx + limit
     return start_idx, end_idx, current_page, total_pages
 
+# --- Callbacks ---
 def view_case(rid):
     st.session_state.selected_case_id = rid
     st.session_state.view_mode = "detail"
@@ -351,6 +348,8 @@ def officer_dashboard():
 
     try:
         df = conn.read(ttl="1m")
+        # [UPDATE] เรียกฟังก์ชันซ่อมแซมคอลัมน์ทันทีหลังอ่าน
+        df = ensure_columns(df)
         df = df.fillna("")
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
@@ -624,18 +623,15 @@ def main_page():
                 </div>
             """, unsafe_allow_html=True)
             
-            # --- [UPDATE ข้อ 3] ระบบป้องกันสแปม ---
             submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
             
             if submitted:
-                # 1. เช็คเวลา (Time Spam Check)
                 if 'last_submit_time' in st.session_state:
                     time_diff = (datetime.now() - st.session_state.last_submit_time).total_seconds()
                     if time_diff < 60:
                         st.error(f"⚠️ กรุณารออีก {60 - int(time_diff)} วินาที ก่อนแจ้งเหตุครั้งต่อไป")
                         st.stop()
 
-                # 2. เช็คความยาว (Quality Check)
                 if len(det) < 10:
                     st.error("⚠️ กรุณาระบุรายละเอียดเหตุการณ์ให้ชัดเจนกว่านี้ (อย่างน้อย 10 ตัวอักษร)")
                 
@@ -643,12 +639,19 @@ def main_page():
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+                    # --- เรียกใช้ ensure_columns ก่อนบันทึก ---
                     df_old = conn.read(ttl="1m")
+                    df_old = ensure_columns(df_old)
+                    # ----------------------------------------
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
+                    # เติมคอลัมน์ขาดหายใน new_data
+                    for c in df_old.columns:
+                        if c not in new_data.columns: new_data[c] = ""
+                        
                     conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
                     st.cache_data.clear()
                     
-                    st.session_state.last_submit_time = datetime.now() # บันทึกเวลา
+                    st.session_state.last_submit_time = datetime.now()
                     
                     st.success(f"ส่งข้อมูลสำเร็จ! รหัสรับแจ้งคือ: {rid}")
                     st.info("⚠️ กรุณาจดจำเลข 4 ตัวท้ายของรหัสรับแจ้ง เพื่อใช้ตรวจสอบสถานะ")
@@ -664,6 +667,8 @@ def main_page():
             if len(search_code) == 4 and search_code.isdigit():
                 try:
                     df = conn.read(ttl="1m")
+                    # [UPDATE] ซ่อมแซมคอลัมน์ก่อนค้นหา
+                    df = ensure_columns(df)
                     df = df.fillna("")
                     df['Report_ID'] = df['Report_ID'].astype(str)
                     match = df[df['Report_ID'].str.endswith(search_code)]
