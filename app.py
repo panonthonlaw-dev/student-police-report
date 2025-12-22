@@ -170,14 +170,12 @@ def clear_search_callback():
 
 # ฟังก์ชันคำนวณหน้า (Pagination Logic)
 def calculate_pagination(key, total_items, limit=5):
-    # ตรวจสอบว่ามี State หรือยัง
     if key not in st.session_state:
         st.session_state[key] = 1
     
     current_page = st.session_state[key]
     total_pages = math.ceil(total_items / limit)
     
-    # ป้องกันหน้าเกินจำนวนจริง
     if total_pages == 0: total_pages = 1
     if current_page > total_pages:
         current_page = 1
@@ -214,7 +212,6 @@ def render_case_list(df_subset, list_type):
         cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
         with cc1:
             btn_txt = f"✅ {rid_label}" if has_result else f"📝 {rid_label}"
-            # ใช้ key ที่ไม่ซ้ำกันตาม list_type
             st.button(btn_txt, key=f"btn_{list_type}_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
         with cc2: st.write(row.get('Timestamp', '-'))
         with cc3: st.write(row.get('Incident_Type', '-'))
@@ -238,10 +235,8 @@ def officer_dashboard():
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True)
 
         if st.session_state.view_mode == "list":
-            # --- สร้าง Tabs ---
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
             
-            # --- TAB 1: รายการแจ้งเหตุ (พร้อม Pagination แยกอิสระ) ---
             with tab_list:
                 c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
                 with c_search:
@@ -253,22 +248,14 @@ def officer_dashboard():
                 if search_q:
                     filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
                 
-                # แยก Pending / Finished
                 df_pending = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
                 df_finished = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
 
-                # ==========================================
-                # ส่วนที่ 1: รายการรอ (Pagination แยก: page_pending)
-                # ==========================================
                 st.markdown("<h4 style='color:#1E3A8A; background-color:#f0f2f6; padding:10px; border-radius:5px;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
                 
-                # คำนวณหน้าสำหรับ Pending
                 start_p, end_p, curr_p, tot_p = calculate_pagination('page_pending', len(df_pending), 5)
-                
-                # แสดงรายการ
                 render_case_list(df_pending.iloc[start_p:end_p], "pending")
                 
-                # ปุ่มควบคุม Pending (ใช้ key เฉพาะกลุ่ม)
                 if tot_p > 1:
                     cp1, cp2, cp3 = st.columns([1, 2, 1])
                     with cp1: 
@@ -280,20 +267,13 @@ def officer_dashboard():
                         if st.button("ถัดไป (รอ) ➡️", key="btn_next_pending", disabled=(curr_p==tot_p)): 
                             st.session_state.page_pending += 1; st.rerun()
 
-                st.markdown("---") # เส้นคั่นชัดเจน
+                st.markdown("---")
 
-                # ==========================================
-                # ส่วนที่ 2: รายการเสร็จ (Pagination แยก: page_finished)
-                # ==========================================
                 st.markdown("<h4 style='color:#2e7d32; background-color:#e8f5e9; padding:10px; border-radius:5px;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
                 
-                # คำนวณหน้าสำหรับ Finished
                 start_f, end_f, curr_f, tot_f = calculate_pagination('page_finished', len(df_finished), 5)
-                
-                # แสดงรายการ
                 render_case_list(df_finished.iloc[start_f:end_f], "finished")
 
-                # ปุ่มควบคุม Finished (ใช้ key เฉพาะกลุ่ม)
                 if tot_f > 1:
                     cf1, cf2, cf3 = st.columns([1, 2, 1])
                     with cf1: 
@@ -305,7 +285,6 @@ def officer_dashboard():
                         if st.button("ถัดไป (เสร็จ) ➡️", key="btn_next_finished", disabled=(curr_f==tot_f)): 
                             st.session_state.page_finished += 1; st.rerun()
 
-            # --- TAB 2: แดชบอร์ดสถิติ ---
             with tab_dash:
                 st.subheader("📊 สรุปสถิติสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา")
                 
@@ -326,13 +305,17 @@ def officer_dashboard():
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
                         loc_counts = df['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
-                            st.write(f"- **{loc}**: {count} ครั้ง")
+                            percent = (count / total_cases) * 100
+                            # เพิ่ม HTML span เพื่อแสดงเปอร์เซ็นต์สีแดง
+                            st.markdown(f"- **{loc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
                             
                     with c_text2:
                         st.markdown("**📌 สรุปยอดตามประเภทเหตุ**")
                         type_counts = df['Incident_Type'].value_counts()
                         for inc, count in type_counts.items():
-                            st.write(f"- **{inc}**: {count} ครั้ง")
+                            percent = (count / total_cases) * 100
+                            # เพิ่ม HTML span เพื่อแสดงเปอร์เซ็นต์สีแดง
+                            st.markdown(f"- **{inc}**: {count} ครั้ง <span style='color:red; font-size:0.8em;'>({percent:.1f}%)</span>", unsafe_allow_html=True)
 
                     st.markdown("---")
                     col1, col2 = st.columns(2)
