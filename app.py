@@ -286,7 +286,7 @@ def officer_dashboard():
                             st.session_state.page_finished += 1; st.rerun()
 
             with tab_dash:
-                st.subheader("📊 สรุปสถิติสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา")
+                st.subheader("📊 สรุปสถิติ")
                 
                 if not df.empty:
                     total_cases = len(df)
