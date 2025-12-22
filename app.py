@@ -18,6 +18,17 @@ st.set_page_config(page_title="ระบบแจ้งความตำรว�
 LOGO_FILE = "school_logo.png"
 FONT_FILE = "THSarabunNew.ttf"
 
+# รายชื่อสถานที่ (Dropdown Options)
+LOCATION_OPTIONS = [
+    "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
+    "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
+    "อาคารไฟฟ้าสนามฟุตบอล", "สนามบาส", "โรงอาหาร", "สนามปิงปอง",
+    "สวนหลังห้องปกครอง", "สวนสนามเปตอง", "สวนเกษตร", "สวนหลังไทรทอง",
+    "ห้องน้ำโรงอาหารติดอาคาร 4", "ห้องน้ำโรงอาหารติดประตูโรงอาหาร",
+    "ห้องน้ำหลังอาคาร 3", "ห้องน้ำอาคารไฟฟ้า", "ห้องน้ำหลังอาคาร 5",
+    "อื่นๆ"
+]
+
 def get_now_th():
     return datetime.now(pytz.timezone('Asia/Bangkok'))
 
@@ -206,26 +217,53 @@ def officer_dashboard():
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True)
 
         if st.session_state.view_mode == "list":
-            # Search
-            c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
-            with c_search:
-                search_q = st.text_input("ค้นหา", placeholder="เลขเคส, ชื่อ, หรือเหตุการณ์...", key="search_query", label_visibility="collapsed")
-            with c_btn_search: st.button("🔍 ค้นหา", use_container_width=True)
-            with c_btn_clear: st.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
+            # --- สร้าง Tabs สำหรับรายการ และ แดชบอร์ด ---
+            tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
             
-            # Filter
-            filtered_df = df.copy()
-            if search_q:
-                filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
-            
-            df_pending = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
-            df_finished = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
+            with tab_list:
+                # Search
+                c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
+                with c_search:
+                    search_q = st.text_input("ค้นหา", placeholder="เลขเคส, ชื่อ, หรือเหตุการณ์...", key="search_query", label_visibility="collapsed")
+                with c_btn_search: st.button("🔍 ค้นหา", use_container_width=True)
+                with c_btn_clear: st.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
+                
+                # Filter
+                filtered_df = df.copy()
+                if search_q:
+                    filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
+                
+                df_pending = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
+                df_finished = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
 
-            st.markdown("<h4 style='color:#1E3A8A;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
-            render_case_list(df_pending.head(20), "pending")
+                st.markdown("<h4 style='color:#1E3A8A;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
+                render_case_list(df_pending.head(20), "pending")
 
-            st.markdown("<br><h4 style='color:#2e7d32;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
-            render_case_list(df_finished.head(20), "finished")
+                st.markdown("<br><h4 style='color:#2e7d32;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
+                render_case_list(df_finished.head(20), "finished")
+
+            with tab_dash:
+                st.subheader("📊 สรุปสถิติสถานีตำรวจนักเรียน")
+                
+                if not df.empty:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**🔹 จำนวนเหตุแยกตามประเภท**")
+                        type_counts = df['Incident_Type'].value_counts()
+                        st.bar_chart(type_counts, color="#FF4B4B")
+                    
+                    with col2:
+                        st.markdown("**🔹 จำนวนเหตุแยกตามสถานที่**")
+                        # แสดงกราฟสถานที่ (Top 10)
+                        loc_counts = df['Location'].value_counts().head(10)
+                        st.bar_chart(loc_counts, color="#1E3A8A")
+                    
+                    st.markdown("---")
+                    st.markdown("**🔹 สถานะการดำเนินงานทั้งหมด**")
+                    status_counts = df['Status'].value_counts()
+                    st.bar_chart(status_counts)
+                else:
+                    st.info("ยังไม่มีข้อมูลในระบบ")
 
         elif st.session_state.view_mode == "detail":
             sid = st.session_state.selected_case_id
@@ -320,7 +358,10 @@ def main_page():
         with st.form("report_form"):
             rep = st.text_input("ชื่อผู้แจ้ง *")
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
-            loc = st.text_input("สถานที่เกิดเหตุ *")
+            
+            # [แก้ไข] เปลี่ยนเป็น Dropdown สถานที่ตามที่ระบุ
+            loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
+            
             det = st.text_area("รายละเอียดเหตุการณ์ *")
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
