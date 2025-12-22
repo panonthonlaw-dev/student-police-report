@@ -72,13 +72,15 @@ def process_image(img_file):
         img = Image.open(img_file)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
+        
         img.thumbnail((800, 800))
         buffer = io.BytesIO()
+        
         img.save(buffer, format="JPEG", quality=65, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- [UPDATE] ฟังก์ชันป้องกัน Error หาก Sheet ว่าง ---
+# --- [CRITICAL FIX] ฟังก์ชันป้องกัน Error หาก Sheet ว่าง/หัวตารางหาย ---
 def ensure_columns(df):
     required_cols = [
         'Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 
@@ -87,11 +89,14 @@ def ensure_columns(df):
         'Statement', 'Evidence_Image'
     ]
     
-    # ถ้า DataFrame ว่างเปล่า ให้สร้างใหม่พร้อมหัวตาราง
+    # 1. ถ้า DataFrame ว่างเปล่า ให้สร้างใหม่พร้อมหัวตาราง
     if df.empty:
         return pd.DataFrame(columns=required_cols)
     
-    # ถ้ามีข้อมูล แต่ขาดบางคอลัมน์ ให้เติมคอลัมน์ที่ขาดด้วยค่าว่าง
+    # 2. ลบช่องว่างหัวท้ายในชื่อคอลัมน์ (แก้ปัญหา 'Report_ID ' ไม่ตรงกับ 'Report_ID')
+    df.columns = df.columns.str.strip()
+    
+    # 3. ถ้ามีข้อมูล แต่ขาดบางคอลัมน์ ให้เติมคอลัมน์ที่ขาดด้วยค่าว่าง
     for col in required_cols:
         if col not in df.columns:
             df[col] = ""
@@ -109,7 +114,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF ---
+# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -348,7 +353,7 @@ def officer_dashboard():
 
     try:
         df = conn.read(ttl="1m")
-        # [UPDATE] เรียกฟังก์ชันซ่อมแซมคอลัมน์ทันทีหลังอ่าน
+        # [CRITICAL FIX] ใส่ ensure_columns ทุกครั้งหลัง read
         df = ensure_columns(df)
         df = df.fillna("")
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -639,15 +644,15 @@ def main_page():
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    # --- เรียกใช้ ensure_columns ก่อนบันทึก ---
+                    # --- [CRITICAL FIX] ใส่ ensure_columns ตรงนี้ด้วย ---
                     df_old = conn.read(ttl="1m")
                     df_old = ensure_columns(df_old)
-                    # ----------------------------------------
+                    # --------------------------------------------------
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
-                    # เติมคอลัมน์ขาดหายใน new_data
+                    
                     for c in df_old.columns:
                         if c not in new_data.columns: new_data[c] = ""
-                        
+                    
                     conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
                     st.cache_data.clear()
                     
@@ -667,8 +672,9 @@ def main_page():
             if len(search_code) == 4 and search_code.isdigit():
                 try:
                     df = conn.read(ttl="1m")
-                    # [UPDATE] ซ่อมแซมคอลัมน์ก่อนค้นหา
+                    # --- [CRITICAL FIX] ใส่ ensure_columns ตรงนี้ด้วย ---
                     df = ensure_columns(df)
+                    # --------------------------------------------------
                     df = df.fillna("")
                     df['Report_ID'] = df['Report_ID'].astype(str)
                     match = df[df['Report_ID'].str.endswith(search_code)]
