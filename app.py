@@ -13,7 +13,7 @@ from PIL import Image
 import io
 
 # --- 1. ตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="ระบบแจ้งความตำรวจนักเรียน", page_icon="👮‍♂️", layout="wide")
+st.set_page_config(page_title="ระบบแจ้งความตำรวจนักเรียน ", page_icon="👮‍♂️", layout="wide")
 
 LOGO_FILE = "school_logo.png"
 FONT_FILE = "THSarabunNew.ttf"
