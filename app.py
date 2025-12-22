@@ -13,6 +13,7 @@ from PIL import Image
 import io
 import qrcode
 import xlsxwriter
+import tempfile # (จำเป็นต้องเพิ่มบรรทัดนี้ เพื่อแก้ปัญหา PDF Error)
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
@@ -94,11 +95,11 @@ class ReportPDF(FPDF):
         self.set_x(10)
         self.cell(0, 10, txt=f"พิมพ์โดย: {printer} | เวลา: {now_str} | หน้า {self.page_no()}", align='R')
 
-# --- แก้ไขฟังก์ชัน create_pdf โดยใช้วิธี Direct Buffer (แก้ปัญหา Encoding หายขาด) ---
+# --- แก้ไขฟังก์ชัน create_pdf (ใช้ TempFile เพื่อแก้ปัญหา Encoding 100%) ---
 def create_pdf(row_data):
+    tmp_path = None
     try:
-        if not os.path.exists(FONT_FILE): 
-            return b"ERROR: FONT_MISSING" # ส่งค่ากลับเป็น bytes เสมอ
+        if not os.path.exists(FONT_FILE): return b"ERROR: FONT_MISSING" # ส่งค่ากลับเป็น bytes
 
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
@@ -179,12 +180,29 @@ def create_pdf(row_data):
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
-        # === ส่วนสำคัญที่สุด: ปิดไฟล์และส่งคืน Buffer โดยตรง (ไม่ต้องผ่าน String Encoding) ===
-        pdf.close() # สั่งปิดไฟล์เพื่อสรุปข้อมูลลง Buffer
-        return bytes(pdf.buffer) # ส่งคืนข้อมูลดิบ (Bytes) ทันที
+        # === ส่วนสำคัญ: เขียนลงไฟล์ Temp แล้วอ่านกลับเป็น Binary ล้วนๆ ===
+        # ใช้ dest='F' บังคับให้เขียนไฟล์ เพื่อเลี่ยงการแปลง String ของ FPDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name, 'F')
+            tmp_path = tmp.name
+        
+        # อ่านไฟล์กลับมาเป็น bytes (โหมด rb)
+        with open(tmp_path, 'rb') as f:
+            pdf_bytes = f.read()
+            
+        # ลบไฟล์ทิ้ง
+        try:
+            os.remove(tmp_path)
+        except: pass
+            
+        return pdf_bytes
 
-    except Exception as e: 
-        # ส่ง Error กลับเป็น Bytes เพื่อไม่ให้ส่วนอื่นพัง
+    except Exception as e:
+        # หากมีไฟล์ค้างให้ลบ
+        if tmp_path and os.path.exists(tmp_path):
+            try: os.remove(tmp_path)
+            except: pass
+        # ส่ง Error กลับเป็น bytes
         return f"ERROR: {str(e)}".encode('utf-8')
 
 # --- 3. Helper Functions ---
@@ -439,7 +457,7 @@ def officer_dashboard():
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
                             
-                            # ตรวจสอบว่าเป็น Error Message หรือไม่ (แบบ Bytes)
+                            # ตรวจสอบว่าเป็น Error Message แบบ Bytes หรือไม่
                             if pdf_bytes.startswith(b"ERROR"):
                                 err_msg = pdf_bytes.decode('utf-8', errors='ignore')
                                 st.error(f"ระบบ PDF ขัดข้อง: {err_msg}")
