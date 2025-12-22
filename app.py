@@ -414,6 +414,7 @@ def officer_dashboard():
                     c_text1, c_text2 = st.columns(2)
                     with c_text1:
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
+                        # แสดงผล Top 5 และ %
                         loc_counts = df['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
                             percent = (count / total_cases) * 100
@@ -421,6 +422,7 @@ def officer_dashboard():
                             
                     with c_text2:
                         st.markdown("**📌 สรุปยอดตามประเภทเหตุ**")
+                        # แสดงผล Top 5 และ %
                         type_counts = df['Incident_Type'].value_counts().head(5)
                         for inc, count in type_counts.items():
                             percent = (count / total_cases) * 100
@@ -448,20 +450,21 @@ def officer_dashboard():
                     with adv1:
                         st.markdown("**🔥 ความสัมพันธ์: สถานที่ vs ประเภทเหตุ**")
                         corr_df = pd.crosstab(df['Location'], df['Incident_Type'])
-                        # [แก้ไข] เอา gradient ออกเพื่อแก้ปัญหา missing matplotlib
+                        # ลบ gradient ออกเพื่อแก้ปัญหา matplotlib
                         st.dataframe(corr_df, use_container_width=True, height=300)
                     with adv2:
                         st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
                         heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
-                        # [แก้ไข] เอา gradient ออก
+                        # ลบ gradient ออก
                         st.dataframe(heatmap_df, use_container_width=True, height=300)
     
     except Exception as e: st.error(f"Error: {e}")
 
-    # เมนู Debug (ซ่อนแล้ว)
+    # --- ส่วนตรวจสอบไฟล์ ย้ายมาซ่อนตรงนี้ ---
     st.markdown("---")
-    if user.get('role') == 'admin':
+    if user.get('role') == 'admin': # เช็คว่าเป็น admin เบื้องต้นจาก session
         with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
+            # เพิ่มการล็อกรหัสผ่าน
             admin_pwd = st.text_input("กรุณาใส่รหัส Admin เพื่อเข้าถึงข้อมูล:", type="password", key="debug_admin_pwd")
             if admin_pwd == "Patwit1510":
                 st.success("Access Granted")
