@@ -10,6 +10,7 @@ import io
 import qrcode
 import glob
 import math
+import mimetypes # <--- เพิ่มไลบรารีสำหรับตรวจสอบชนิดไฟล์
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
@@ -21,20 +22,28 @@ st.set_page_config(page_title="ระบบแจ้งเหตุสถาน�
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
-# ฟังก์ชันแปลงรูปภาพเป็น Base64 (สำคัญมากสำหรับ PDF)
+# ฟังก์ชันแปลงรูปภาพเป็น Base64
 def get_base64_image(image_path):
     if not image_path or not os.path.exists(image_path):
         return ""
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode('utf-8')
 
-# ระบบค้นหาโลโก้อัตโนมัติ (รองรับ png, jpg, jpeg)
+# ระบบค้นหาโลโก้อัตโนมัติ (รองรับ png, jpg, jpeg, bmp และแก้ปัญหา Case Sensitivity เบื้องต้น)
 LOGO_PATH = None
-# ค้นหาไฟล์ที่ชื่อขึ้นต้นด้วย school_logo
+LOGO_MIME = "image/png" # ค่าเริ่มต้น
+
+# ค้นหาทุกไฟล์ที่ขึ้นต้นด้วย school_logo โดยไม่สนนามสกุลก่อน
 possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+# กรองเฉพาะนามสกุลรูปภาพที่รองรับ
+valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
 for f in possible_logos:
-    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+    if f.lower().endswith(valid_extensions):
         LOGO_PATH = f
+        # หา MIME Type ที่ถูกต้อง (เช่น image/jpeg หรือ image/png)
+        mime_type, _ = mimetypes.guess_type(f)
+        if mime_type:
+            LOGO_MIME = mime_type
         break
 
 # แปลงโลโก้เป็น Base64 เตรียมไว้สำหรับ PDF
@@ -71,7 +80,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (WeasyPrint + Base64 Logo) ---
+# --- ฟังก์ชันสร้าง PDF (WeasyPrint + Dynamic Base64 Logo) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -91,12 +100,18 @@ def create_pdf(row):
 
     evidence_html = ""
     if row.get('Evidence_Image'):
+        # ใช้ MIME type เป็น image/jpeg เสมอสำหรับรูปหลักฐานที่ process แล้ว
         evidence_html = f"""
         <div style='margin-top: 10px; page-break-inside: avoid;'>
             <b>หลักฐานประกอบ:</b><br>
             <img src="data:image/jpeg;base64,{row.get('Evidence_Image')}" style="max-height: 150px; border: 1px solid #ccc;">
         </div>
         """
+
+    # สร้าง tag รูปภาพโลโก้โดยใช้ MIME type ที่ถูกต้อง
+    logo_html = ""
+    if LOGO_BASE64:
+        logo_html = f'<img class="logo" src="data:{LOGO_MIME};base64,{LOGO_BASE64}">'
 
     # HTML Template
     html_content = f"""
@@ -126,13 +141,13 @@ def create_pdf(row):
                 text-align: center;
                 position: relative;
                 margin-bottom: 20px;
-                height: 80px; /* จองพื้นที่ให้ Logo */
+                min-height: 80px;
             }}
             .logo {{
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 60px; /* ขนาดโลโก้ใน PDF */
+                width: 60px;
                 height: auto;
             }}
             .qr {{
@@ -145,10 +160,14 @@ def create_pdf(row):
                 font-size: 22pt;
                 font-weight: bold;
                 margin-top: 10px;
+                margin-left: 70px; /* ขยับหนีโลโก้ */
+                margin-right: 70px; /* ขยับหนี QR */
             }}
             .subtitle {{
                 font-size: 18pt;
                 font-weight: bold;
+                margin-left: 70px;
+                margin-right: 70px;
             }}
             .info-table {{
                 width: 100%;
@@ -177,11 +196,9 @@ def create_pdf(row):
     </head>
     <body>
         <div class="header">
-            {'<img class="logo" src="data:image/png;base64,' + LOGO_BASE64 + '">' if LOGO_BASE64 else ''}
-            
+            {logo_html}
             <div class="title">สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</div>
             <div class="subtitle">ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน</div>
-            
             <img class="qr" src="data:image/png;base64,{qr_base64}">
         </div>
         <hr>
@@ -279,7 +296,10 @@ def officer_dashboard():
     # แสดง Logo และหัวข้อในหน้า Dashboard
     col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
     with col_h1:
-        if LOGO_PATH: st.image(LOGO_PATH, width=80)
+        if LOGO_PATH and os.path.exists(LOGO_PATH):
+            st.image(LOGO_PATH, width=80)
+        else:
+            st.write("ไม่พบโลโก้")
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
@@ -437,7 +457,7 @@ def officer_dashboard():
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
-                    # --- ปุ่ม PDF (แก้ไขแล้ว) ---
+                    # --- ปุ่ม PDF ---
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
@@ -467,8 +487,8 @@ def officer_dashboard():
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
-    # แสดงโลโก้ในหน้าหลัก
-    if LOGO_PATH: 
+    # แสดงโลโก้ในหน้าหลัก (ถ้ามี)
+    if LOGO_PATH and os.path.exists(LOGO_PATH):
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
     
@@ -546,6 +566,22 @@ def main_page():
                 st.session_state.current_user = accounts[pw]
                 st.rerun()
             else: st.error("รหัสผิด")
+    
+    # --- พื้นที่ Debug (ตรวจสอบไฟล์) ---
+    st.markdown("---")
+    with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
+        st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
+        st.write("📄 ไฟล์ที่พบ (school_logo*):")
+        found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+        if found_logos:
+            for f in found_logos:
+                st.code(os.path.basename(f))
+        else:
+            st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
+            
+        st.write("---")
+        st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
+        st.write(f"✅ MIME Type ที่ตรวจพบ: `{LOGO_MIME}`")
 
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
