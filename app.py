@@ -19,7 +19,21 @@ import glob
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-LOGO_FILE = "school_logo.png"
+# แก้ไข: ค้นหาไฟล์โลโก้จากนามสกุลต่างๆ แทนการระบุชื่อตายตัว
+LOGO_EXTENSIONS = ["png", "jpg", "jpeg"]
+LOGO_FILE = None
+for ext in LOGO_EXTENSIONS:
+    if os.path.exists(f"school_logo.{ext}"):
+        LOGO_FILE = f"school_logo.{ext}"
+        break
+# หากไม่เจอ ให้ลองหาไฟล์ที่มีคำว่า logo
+if not LOGO_FILE:
+    for ext in LOGO_EXTENSIONS:
+        files = glob.glob(f"*logo*.{ext}")
+        if files:
+            LOGO_FILE = files[0]
+            break
+
 FONT_FILE = "THSarabunNew.ttf"
 
 # รายชื่อสถานที่
@@ -63,7 +77,8 @@ class ReportPDF(FPDF):
             self.add_font('ThaiFont', '', FONT_FILE, uni=True)
             self.set_font('ThaiFont', '', 20)
         
-        if os.path.exists(LOGO_FILE):
+        # ใช้ตัวแปร LOGO_FILE ที่ค้นหามาได้
+        if LOGO_FILE and os.path.exists(LOGO_FILE):
             self.image(LOGO_FILE, x=15, y=10, w=25)
         
         # Watermark
@@ -485,7 +500,7 @@ def officer_dashboard():
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
-    if os.path.exists(LOGO_FILE):
+    if os.path.exists(LOGO_FILE) if LOGO_FILE else False:
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
     
