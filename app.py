@@ -16,15 +16,14 @@ except: pass
 # ==========================================
 st.set_page_config(page_title="ระบบเจ้าหน้าที่ส่วนกลาง", page_icon="👮‍♂️", layout="wide")
 
-# สร้าง Session State ให้ครบถ้วนตามความต้องการของระบบ
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
-if "user_info" not in st.session_state: st.session_state.user_info = {}
-if "current_dept" not in st.session_state: st.session_state.current_dept = None
-if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
-if 'selected_case_id' not in st.session_state: st.session_state.selected_case_id = None
-if 'unlock_password' not in st.session_state: st.session_state.unlock_password = ""
-if 'page_pending' not in st.session_state: st.session_state.page_pending = 1
-if 'page_finished' not in st.session_state: st.session_state.page_finished = 1
+# สร้าง Session State ให้ครบถ้วน
+states = {
+    'logged_in': False, 'user_info': {}, 'current_dept': None,
+    'view_mode': 'list', 'selected_case_id': None, 'unlock_password': "",
+    'page_pending': 1, 'page_finished': 1, 'search_query_main': ""
+}
+for key, val in states.items():
+    if key not in st.session_state: st.session_state[key] = val
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
@@ -75,15 +74,8 @@ def view_case(rid):
     st.session_state.view_mode = "detail"
     st.session_state.unlock_password = ""
 
-def back_to_list():
-    st.session_state.view_mode = "list"
-    st.session_state.selected_case_id = None
-
-def clear_search_callback():
-    st.session_state.search_query_main = ""
-
 # ==========================================
-# 3. PDF GENERATION (ครบถ้วนทุกรายละเอียด)
+# 3. PDF SYSTEM (ลายเซ็น 5 คน + Footer ครบ)
 # ==========================================
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
@@ -91,7 +83,6 @@ def create_pdf(row):
     qi = io.BytesIO(); qr.save(qi, format="PNG")
     qr_b64 = base64.b64encode(qi.getvalue()).decode()
     
-    # ดึงวันที่ล่าสุดจาก Audit Log
     audit_log = str(row.get('Audit_Log', ''))
     latest_date = "-"
     if audit_log:
@@ -107,7 +98,6 @@ def create_pdf(row):
     p_time = get_now_th().strftime("%d/%m/%Y %H:%M:%S")
     logo_html = f'<img class="logo" src="data:image/png;base64,{LOGO_BASE64}">' if LOGO_BASE64 else ""
 
-    # จัดการรูปภาพใน PDF (Resize)
     img_html = ""
     for k in ['Image_Data', 'Evidence_Image']:
         if clean_val(row.get(k)):
@@ -127,7 +117,7 @@ def create_pdf(row):
             .logo {{ position: absolute; top: 0; left: 0; width: 60px; }}
             .qr {{ position: absolute; top: 0; right: 0; width: 60px; }}
             .box {{ border: 1px solid #000; padding: 10px; margin-bottom: 10px; min-height: 80px; white-space: pre-wrap; background: #f9f9f9; }}
-            .sig-table {{ width: 100%; margin-top: 30px; text-align: center; }}
+            .sig-table {{ width: 100%; margin-top: 20px; text-align: center; }}
         </style>
     </head>
     <body>
@@ -171,17 +161,8 @@ def create_pdf(row):
 # ==========================================
 def investigation_module():
     user = st.session_state.user_info
-    st.sidebar.button("⬅️ กลับหน้าเลือกแผนก", on_click=lambda: setattr(st.session_state, 'current_dept', None), width='stretch')
+    st.sidebar.button("⬅️ กลับหน้าเลือกแผนก", on_click=lambda: st.session_state.update({'current_dept': None, 'view_mode': 'list'}), width='stretch')
     
-    col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
-    with col_h1:
-        if LOGO_PATH: st.image(LOGO_PATH, width=80)
-    with col_h2:
-        st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
-    with col_h3:
-        if st.button("🔴 Logout", key="inv_logout", use_container_width=True):
-            st.session_state.clear(); st.rerun()
-
     conn = st.connection("gsheets", type=GSheetsConnection)
     try:
         df_raw = conn.read(ttl="0")
@@ -189,59 +170,58 @@ def investigation_module():
         df_display['Report_ID'] = df_display['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
         if st.session_state.view_mode == "list":
+            col_h1, col_h2 = st.columns([4, 1])
+            col_h1.markdown(f"### 🏢 ระบบสอบสวน คุณ{user['name']}")
+            if col_h2.button("🔴 Logout", use_container_width=True):
+                st.session_state.clear(); st.rerun()
+
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
             
             with tab_list:
-                c_search, c_btn_search, c_btn_clear = st.columns([3, 1, 1])
-                search_q = c_search.text_input("ค้นหา", placeholder="เลขเคส, ชื่อ, หรือเหตุการณ์...", key="search_query_main", label_visibility="collapsed")
-                c_btn_search.button("🔍 ค้นหา", use_container_width=True)
-                c_btn_clear.button("❌ ล้าง", on_click=clear_search_callback, use_container_width=True)
-
-                filtered_df = df_display.copy()
+                # ระบบค้นหา
+                search_q = st.text_input("🔍 ค้นหา", placeholder="เลขเคส, ชื่อ, หรือเหตุการณ์...", key="inv_search_box")
+                filtered = df_display.copy()
                 if search_q:
-                    filtered_df = filtered_df[filtered_df.apply(lambda row: row.astype(str).str.contains(search_q, case=False).any(), axis=1)]
+                    filtered = filtered[filtered.apply(lambda r: r.astype(str).str.contains(search_q, case=False).any(), axis=1)]
                 
-                df_p = filtered_df[filtered_df['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
-                df_f = filtered_df[filtered_df['Status'] == "ดำเนินการเรียบร้อย"][::-1]
+                # แยก Pending และ Finished
+                df_p = filtered[filtered['Status'].isin(["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ"])][::-1]
+                df_f = filtered[filtered['Status'] == "ดำเนินการเรียบร้อย"][::-1]
 
-                # รายการที่รอ
+                # --- ⏳ รายการที่รอ ---
                 st.markdown("<h4 style='color:#1E3A8A; background-color:#f0f2f6; padding:10px; border-radius:5px;'>⏳ รายการที่รอการดำเนินการ</h4>", unsafe_allow_html=True)
-                start, end, cur, tot = calculate_pagination('page_pending', len(df_p), 5)
-                h1, h2, h3, h4 = st.columns([2.5, 2, 3, 1.5])
-                h1.markdown("**เลขที่รับแจ้ง**"); h2.markdown("**วันเวลา**"); h3.markdown("**ประเภทเหตุ**"); h4.markdown("**สถานะ**")
-                st.divider()
-                if df_p.empty: st.caption("ไม่มีรายการ")
-                for i, row in df_p.iloc[start:end].iterrows():
-                    rid = row['Report_ID']
-                    cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                    with cc1: st.button(f"📝 {rid}", key=f"p_{i}", use_container_width=True, on_click=view_case, args=(rid,))
-                    cc2.write(row['Timestamp']); cc3.write(row['Incident_Type'])
-                    cc4.markdown("<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
+                start, end, cur, tot = calculate_pagination('page_pending', len(df_p))
+                for idx, row in df_p.iloc[start:end].iterrows():
+                    c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
+                    with c1: st.button(f"📝 {row['Report_ID']}", key=f"p_{idx}", use_container_width=True, on_click=view_case, args=(row['Report_ID'],))
+                    c2.write(row['Timestamp']); c3.write(row['Incident_Type']); c4.write("⏳ รอ")
                     st.divider()
 
-                # รายการที่เรียบร้อย
+                # --- ✅ รายการที่เรียบร้อย (มั่นใจว่าแสดงผล) ---
                 st.markdown("<h4 style='color:#2e7d32; background-color:#e8f5e9; padding:10px; border-radius:5px;'>✅ รายการที่ดำเนินการเรียบร้อย</h4>", unsafe_allow_html=True)
-                start_f, end_f, cur_f, tot_f = calculate_pagination('page_finished', len(df_f), 5)
-                for i, row in df_f.iloc[start_f:end_f].iterrows():
-                    rid = row['Report_ID']
-                    cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                    with cc1: st.button(f"✅ {rid}", key=f"f_{i}", use_container_width=True, on_click=view_case, args=(rid,))
-                    cc2.write(row['Timestamp']); cc3.write(row['Incident_Type'])
-                    cc4.markdown("<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
-                    st.divider()
+                if df_f.empty: st.caption("ไม่มีรายการที่เรียบร้อย")
+                else:
+                    start_f, end_f, cur_f, tot_f = calculate_pagination('page_finished', len(df_f))
+                    for idx, row in df_f.iloc[start_f:end_f].iterrows():
+                        c1, c2, c3, c4 = st.columns([2.5, 2, 3, 1.5])
+                        with c1: st.button(f"✅ {row['Report_ID']}", key=f"f_{idx}", use_container_width=True, on_click=view_case, args=(row['Report_ID'],))
+                        c2.write(row['Timestamp']); c3.write(row['Incident_Type']); c4.write("✅ จบ")
+                        st.divider()
 
         elif st.session_state.view_mode == "detail":
-            st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, use_container_width=True)
+            st.button("⬅️ กลับหน้ารายการ", on_click=lambda: st.session_state.update({'view_mode': 'list', 'unlock_password': ""}), use_container_width=True)
             sid = st.session_state.selected_case_id
             sel = df_display[df_display['Report_ID'] == sid]
+            
             if not sel.empty:
                 idx_raw = sel.index[0]; row = sel.iloc[0]
                 st.markdown(f"### 📝 เลขที่รับแจ้ง: {sid}")
                 with st.container(border=True):
                     st.write(f"**ผู้แจ้ง:** {row['Reporter']} | **สถานที่:** {row['Location']}")
                     st.info(f"**รายละเอียด:** {row['Details']}")
+                    # ดึงรูปภาพจาก Image_Data
                     if clean_val(row['Image_Data']):
-                        st.image(base64.b64decode(row['Image_Data']), width=500, caption="หลักฐานจากผู้แจ้ง")
+                        st.image(base64.b64decode(row['Image_Data']), width=500, caption="รูปจากผู้แจ้ง")
 
                 is_admin = user.get('role') == 'admin'
                 cur_sta = clean_val(row['Status'])
@@ -249,36 +229,36 @@ def investigation_module():
                 if not is_admin: is_lock = True
 
                 if is_lock and cur_sta == "ดำเนินการเรียบร้อย" and is_admin:
-                    st.error("🔒 เคสนี้ดำเนินการเรียบร้อยแล้ว (กรุณาปลดล็อคเพื่อแก้ไข)")
-                    pwd = st.text_input("รหัสปลดล็อค", type="password")
-                    if st.button("ยืนยันปลดล็อค"):
+                    st.error("🔒 เคสนี้เรียบร้อยแล้ว ใส่รหัส Patwit1510 เพื่อแก้ไข")
+                    pwd = st.text_input("รหัสปลดล็อก", type="password")
+                    if st.button("ยืนยันปลดล็อก"):
                         if pwd == "Patwit1510": st.session_state.unlock_password = "Patwit1510"; st.rerun()
 
-                with st.form("inv_form"):
+                with st.form("full_edit_form"):
                     c1, c2 = st.columns(2)
                     v_vic = c1.text_input("ผู้เสียหาย *", value=clean_val(row['Victim']), disabled=is_lock)
                     v_acc = c2.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row['Accused']), disabled=is_lock)
                     v_wit = c1.text_input("พยาน", value=clean_val(row['Witness']), disabled=is_lock)
-                    v_tea = c2.text_input("ครูผู้สอบสวน *", value=clean_val(row['Teacher_Investigator']), disabled=is_lock)
-                    v_stu = c1.text_input("ตำรวจนักเรียน *", value=clean_val(row['Student_Police_Investigator']), disabled=is_lock)
-                    v_sta = c2.selectbox("สถานะ", ["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"], index=0, disabled=is_lock)
+                    v_stu = c2.text_input("ตำรวจนักเรียน *", value=clean_val(row['Student_Police_Investigator']), disabled=is_lock)
+                    v_tea = c1.text_input("ครูผู้สอบสวน *", value=clean_val(row['Teacher_Investigator']), disabled=is_lock)
+                    v_sta = c2.selectbox("สถานะ", ["รอดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"], index=0, disabled=is_lock)
                     v_stmt = st.text_area("ผลการดำเนินการสอบสวน *", value=clean_val(row['Statement']), disabled=is_lock)
                     ev_img = st.file_uploader("📸 แนบรูปหลักฐานเพิ่ม", type=['jpg','png'], disabled=is_lock)
 
                     if st.form_submit_button("💾 บันทึกข้อมูล") and not is_lock:
                         df_raw.at[idx_raw, 'Victim'] = v_vic; df_raw.at[idx_raw, 'Accused'] = v_acc
-                        df_raw.at[idx_raw, 'Witness'] = v_wit; df_raw.at[idx_raw, 'Teacher_Investigator'] = v_tea
-                        df_raw.at[idx_raw, 'Student_Police_Investigator'] = v_stu
-                        df_raw.at[idx_raw, 'Statement'] = v_stmt; df_raw.at[idx_raw, 'Status'] = v_sta
+                        df_raw.at[idx_raw, 'Witness'] = v_wit; df_raw.at[idx_raw, 'Student_Police_Investigator'] = v_stu
+                        df_raw.at[idx_raw, 'Teacher_Investigator'] = v_tea; df_raw.at[idx_raw, 'Statement'] = v_stmt
+                        df_raw.at[idx_raw, 'Status'] = v_sta
                         if ev_img: df_raw.at[idx_raw, 'Evidence_Image'] = process_image(ev_img)
                         df_raw.at[idx_raw, 'Audit_Log'] = f"{clean_val(row['Audit_Log'])}\n[{get_now_th().strftime('%d/%m/%Y %H:%M')}] แก้ไขโดย {user['name']}"
-                        conn.update(data=df_raw.fillna("")); st.success("บันทึกแล้ว!"); time.sleep(1); st.rerun()
+                        conn.update(data=df_raw.fillna("")); st.success("บันทึกสำเร็จ!"); time.sleep(1); st.rerun()
 
                 # ระบบ PDF
                 st.divider()
                 try:
                     pdf_data = create_pdf(row)
-                    st.download_button(label="📥 ดาวน์โหลดสรุปสำนวน (PDF)", data=pdf_data, file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True, type="primary")
+                    st.download_button(label="📥 ดาวน์โหลด PDF (สำนวนคดี)", data=pdf_data, file_name=f"Report_{sid}.pdf", mime="application/pdf", use_container_width=True, type="primary")
                 except: st.error("PDF ขัดข้อง")
 
     except Exception as e: st.error(f"Error: {e}")
@@ -306,12 +286,12 @@ def main():
             with c1:
                 with st.container(border=True):
                     st.subheader("🕵️ งานสอบสวน")
-                    if st.button("เข้าใช้งานสอบสวน", width='stretch', type='primary'):
+                    if st.button("เข้าใช้งานสอบสวน", use_container_width=True, type="primary"):
                         st.session_state.current_dept = "inv"; st.rerun()
             with c2:
                 with st.container(border=True):
                     st.subheader("🚦 งานจราจร")
-                    if st.button("เข้าใช้งานจราจร", width='stretch', type='primary'):
+                    if st.button("เข้าใช้งานจราจร", use_container_width=True, type="primary"):
                         st.session_state.current_dept = "tra"; st.rerun()
         else:
             if st.session_state.current_dept == "inv": investigation_module()
