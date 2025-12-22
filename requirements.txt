@@ -1,8 +1,7 @@
 streamlit
-streamlit-gsheets
+st-gsheets-connection
 pandas
 fpdf
 Pillow
 qrcode
 xlsxwriter
-pytz
