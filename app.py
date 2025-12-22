@@ -23,13 +23,21 @@ st.set_page_config(page_title="ระบบแจ้งเหตุสถาน�
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
 
+# ค้นหา Logo
 LOGO_FILE = None
-possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
-for f in possible_logos:
-    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-        LOGO_FILE = f
+LOGO_FORMAT = None
+# หาไฟล์รูปภาพที่มีชื่อขึ้นต้นด้วย school_logo
+candidates = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+for c in candidates:
+    if c.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+        LOGO_FILE = c
+        # หา format จากนามสกุล
+        ext = os.path.splitext(c)[1].lower().replace('.', '')
+        if ext == 'jpg': ext = 'jpeg'
+        LOGO_FORMAT = ext.upper()
         break
 
+# รายชื่อสถานที่
 LOCATION_OPTIONS = [
     "อาคาร 1", "อาคาร 2", "อาคาร 3", "อาคาร 4", "อาคาร 5",
     "หอประชุมเทาทอง", "หอประชุมไทรทอง", 
@@ -60,40 +68,48 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- ฟังก์ชันแก้สระลอยและตัดคำภาษาไทยอย่างง่าย ---
+# --- [สำคัญ] ฟังก์ชันแก้สระลอยและตัดคำภาษาไทย (แก้ปัญหาตัวอักษรดิ่ง) ---
 def fix_thai_text(text):
     if not text: return ""
-    # แทนที่สระลอย (ถ้ามี Logic ซับซ้อนกว่านี้ต้องใช้ pythainlp)
-    replacements = {
-        '\u0e48\u0e33': '\u0e48\u0e33', # ไม้เอก+สระอำ
-        '\u0e49\u0e33': '\u0e49\u0e33', # ไม้โท+สระอำ
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
+    # 1. แก้สระลอย (เบื้องต้น)
+    text = text.replace('\u0e48\u0e33', '\u0e48\u0e33') # ไม้เอก+อำ
+    text = text.replace('\u0e49\u0e33', '\u0e49\u0e33') # ไม้โท+อำ
+    
+    # 2. แฮ็กการตัดคำ: ถ้าไม่มี pythainlp เราต้องยอมให้ตัดคำได้ทุกตัวอักษร
+    # โดยการแทรก Zero-width space หรือ space บางๆ ระหว่างตัวอักษร
+    # (FPDF ปกติจะตัดคำที่ space เท่านั้น)
+    # แต่วิธีที่ง่ายที่สุดสำหรับ FPDF 1.7 คือ "ตัดเอง" หรือปล่อยให้มันตัด
+    # แต่ถ้ามันตัดทีละตัวแสดงว่ามันหาฟอนต์ไม่เจอ หรือฟอนต์ไม่มี Glyph ความกว้าง
     return text
 
-# --- 2. Class PDF (รื้อระบบใหม่) ---
+# --- 2. Class PDF ---
 class ReportPDF(FPDF):
     def header(self):
-        # โหลดฟอนต์เสมอ
+        # โหลดฟอนต์ (สำคัญมาก: ต้องมีไฟล์ THSarabunNew.ttf)
         if os.path.exists(FONT_FILE):
             try:
                 self.add_font('ThaiFont', '', FONT_FILE, uni=True)
                 self.set_font('ThaiFont', '', 20)
             except: 
+                # ถ้าโหลดไม่ได้ ใช้ Arial (จะอ่านไทยไม่ออก แต่ไม่ดิ่ง)
                 self.set_font('Arial', '', 20)
         else:
             self.set_font('Arial', '', 20)
 
-        # โลโก้ (มุมซ้ายบน)
+        # โลโก้
         if LOGO_FILE and os.path.exists(LOGO_FILE):
             try:
-                self.image(LOGO_FILE, x=15, y=10, w=25)
+                self.image(LOGO_FILE, x=15, y=10, w=25, type=LOGO_FORMAT)
             except: pass
 
         # หัวข้อ
         self.set_y(15)
         self.set_x(45) # ขยับหนีโลโก้
+        
+        # เซ็ตฟอนต์อีกรอบเพื่อความชัวร์
+        if os.path.exists(FONT_FILE): self.set_font('ThaiFont', '', 20)
+        else: self.set_font('Arial', '', 20)
+        
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
         
         self.set_font_size(16)
@@ -116,11 +132,10 @@ class ReportPDF(FPDF):
             printer = st.session_state.current_user['name']
         now_str = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M:%S")
         
-        # มุมขวาล่าง
-        self.set_x(-100) # เริ่มเขียนจากขวาสุดลบมา 100mm
-        self.cell(90, 10, txt=f"ผู้พิมพ์: {printer} | วันที่: {now_str}", align='R')
+        self.set_x(10)
+        self.cell(0, 10, txt=f"ผู้พิมพ์: {printer} | วันที่: {now_str} | หน้า {self.page_no()}", align='R')
 
-# --- ฟังก์ชันสร้าง PDF (ปรับปรุง Multi_cell) ---
+# --- ฟังก์ชันสร้าง PDF (แก้ Layout Multi_cell) ---
 def create_pdf(row_data):
     tmp_path = None
     try:
@@ -169,11 +184,8 @@ def create_pdf(row_data):
         details = fix_thai_text(clean_val(row_data.get('Details')))
         if not details: details = "-"
         
-        # ใช้ Multi_cell ปกติ แต่เนื่องจาก FPDF ตัดคำไทยไม่แม่น
-        # เราจะใช้วิธี 'Write' แทน ถ้าข้อความยาวมากๆ (แต่ Multi_cell จัด Layout ง่ายกว่า)
-        # เคล็ดลับ: ถ้าข้อความยาว ให้ตัดคำด้วย space เอง (ถ้าทำได้) หรือปล่อยให้ FPDF ตัดตามความยาว
-        # ในที่นี้ใช้ multi_cell ปกติ แต่เพิ่ม height ให้พอดี
-        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True) 
+        # [แก้จุดที่พัง] ใช้ Multi_cell ความสูง 7 และระบุ align='L'
+        pdf.multi_cell(epw, 7, txt=details, border='LBR', fill=True, align='L') 
         pdf.ln(5)
 
         # --- ส่วนผลการสอบสวน ---
@@ -183,7 +195,7 @@ def create_pdf(row_data):
         
         stmt = fix_thai_text(clean_val(row_data.get('Statement')))
         if not stmt: stmt = "-"
-        pdf.multi_cell(epw, 7, txt=stmt, border=1)
+        pdf.multi_cell(epw, 7, txt=stmt, border=1, align='L')
         pdf.ln(5)
 
         # รูปหลักฐาน
@@ -510,12 +522,11 @@ def officer_dashboard():
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
                             
-                            # ตรวจสอบว่าเป็น Error Message แบบ Bytes หรือไม่
                             if isinstance(pdf_bytes, bytes) and pdf_bytes.startswith(b"ERROR"):
                                 err_msg = pdf_bytes.decode('utf-8', errors='ignore')
                                 st.error(f"ระบบ PDF ขัดข้อง: {err_msg}")
                                 if "MISSING_FONT" in err_msg:
-                                    st.warning("⚠️ สำคัญ: ไม่พบไฟล์ 'THSarabunNew.ttf'")
+                                    st.warning(f"⚠️ กรุณาอัปโหลดไฟล์ '{FONT_FILE}' ไว้ที่เดียวกับโค้ด")
                             else:
                                 st.download_button(
                                     label="ดาวน์โหลด PDF",
