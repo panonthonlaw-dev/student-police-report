@@ -72,8 +72,10 @@ def process_image(img_file):
         img = Image.open(img_file)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
+        
         img.thumbnail((800, 800))
         buffer = io.BytesIO()
+        
         img.save(buffer, format="JPEG", quality=65, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
@@ -89,7 +91,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (แก้ไข CSS ตัวอักษรตั้งแถว) ---
+# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -131,7 +133,6 @@ def create_pdf(row):
     if LOGO_BASE64:
         logo_html = f'<img class="logo" src="data:{LOGO_MIME};base64,{LOGO_BASE64}">'
 
-    # CSS แก้ไข: ลบ word-wrap ออก ใช้ white-space แทนเพื่อแก้สระลอย/ตัวตั้ง
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -153,7 +154,7 @@ def create_pdf(row):
             body {{
                 font-family: 'THSarabunNew';
                 font-size: 16pt;
-                line-height: 1.3;
+                line-height: 1.2;
             }}
             .header {{
                 text-align: center;
@@ -198,7 +199,7 @@ def create_pdf(row):
                 padding: 10px;
                 margin-bottom: 10px;
                 min-height: 50px;
-                white-space: pre-wrap; /* แก้ปัญหาตัวอักษรตั้งแถว */
+                word-wrap: break-word; 
             }}
             .signature-table {{
                 width: 100%;
@@ -299,7 +300,6 @@ def calculate_pagination(key, total_items, limit=5):
     end_idx = start_idx + limit
     return start_idx, end_idx, current_page, total_pages
 
-# --- Callbacks ---
 def view_case(rid):
     st.session_state.selected_case_id = rid
     st.session_state.view_mode = "detail"
@@ -323,14 +323,13 @@ def officer_dashboard():
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
-        st.write("") 
+        st.write("") # Spacer
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
 
     try:
         df = conn.read(ttl="1m")
         df = df.fillna("")
-        # [สำคัญ] ทำความสะอาด ID เพื่อให้ค้นหาเจอแน่นอน
         df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
         if st.session_state.view_mode == "list":
@@ -361,7 +360,6 @@ def officer_dashboard():
                     raw_rid = str(row.get('Report_ID', '')).strip()
                     cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
                     with cc1: 
-                        # ปุ่มกดเพื่อดูรายละเอียด
                         st.button(f"📝 {raw_rid}", key=f"p_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
                     with cc2: st.write(row.get('Timestamp', '-'))
                     with cc3: st.write(row.get('Incident_Type', '-'))
@@ -456,34 +454,11 @@ def officer_dashboard():
                         st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
                         heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
                         st.dataframe(heatmap_df, use_container_width=True, height=300)
-    
-    except Exception as e: st.error(f"Error: {e}")
-
-    # Debug Menu
-    st.markdown("---")
-    if user.get('role') == 'admin':
-        with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
-            admin_pwd = st.text_input("กรุณาใส่รหัส Admin เพื่อเข้าถึงข้อมูล:", type="password", key="debug_admin_pwd")
-            if admin_pwd == "Patwit1510":
-                st.success("Access Granted")
-                st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
-                st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
-                found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
-                st.write(f"🖼️ ไฟล์รูปโลโก้ที่พบ ({len(found_logos)} ไฟล์):")
-                if found_logos:
-                    for f in found_logos: st.code(os.path.basename(f))
-                else: st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
-                st.write("---")
-                st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
-                st.write(f"✅ MIME Type ที่ใช้ใน PDF: `{LOGO_MIME}`")
-            elif admin_pwd:
-                st.error("รหัสผ่านไม่ถูกต้อง")
 
         elif st.session_state.view_mode == "detail":
-            # ปุ่มย้อนกลับ (ต้องวางไว้บนสุดของ Detail view)
-            st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, type="secondary", use_container_width=True)
+            st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, use_container_width=True)
             
-            sid = str(st.session_state.selected_case_id).strip() # ตัดช่องว่างออก
+            sid = str(st.session_state.selected_case_id).strip()
             sel = df[df['Report_ID'] == sid]
             
             if not sel.empty:
@@ -577,6 +552,28 @@ def officer_dashboard():
                         st.text(row.get('Audit_Log', 'ไม่มีประวัติ'))
             else:
                 st.error(f"ไม่พบข้อมูลของเลขที่รับแจ้ง: {sid}")
+
+    except Exception as e: st.error(f"Error: {e}")
+
+    # Debug Menu
+    st.markdown("---")
+    if user.get('role') == 'admin':
+        with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
+            admin_pwd = st.text_input("กรุณาใส่รหัส Admin เพื่อเข้าถึงข้อมูล:", type="password", key="debug_admin_pwd")
+            if admin_pwd == "Patwit1510":
+                st.success("Access Granted")
+                st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
+                st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
+                found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
+                st.write(f"🖼️ ไฟล์รูปโลโก้ที่พบ ({len(found_logos)} ไฟล์):")
+                if found_logos:
+                    for f in found_logos: st.code(os.path.basename(f))
+                else: st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
+                st.write("---")
+                st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
+                st.write(f"✅ MIME Type ที่ใช้ใน PDF: `{LOGO_MIME}`")
+            elif admin_pwd:
+                st.error("รหัสผ่านไม่ถูกต้อง")
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
