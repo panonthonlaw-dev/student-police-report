@@ -27,7 +27,6 @@ def get_base64_image(image_path):
     if not image_path or not os.path.exists(image_path):
         return ""
     try:
-        # เปิดไฟล์แบบ Binary
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode('utf-8')
     except Exception as e:
@@ -37,27 +36,20 @@ def get_base64_image(image_path):
 LOGO_PATH = None
 LOGO_MIME = "image/png" # ค่า Default
 
-# 1. ระบุชื่อไฟล์ตรงๆ ที่คุณบอกมา
 target_file = os.path.join(BASE_DIR, "school_logo")
 
 if os.path.exists(target_file):
     LOGO_PATH = target_file
-    # พยายามเดาชนิดไฟล์จริงๆ โดยใช้ PIL
     try:
         with Image.open(target_file) as img:
-            # ถ้าเป็น JPEG ให้ใช้ image/jpeg ถ้าเป็น PNG ให้ใช้ image/png
             if img.format == 'JPEG': LOGO_MIME = "image/jpeg"
             elif img.format == 'PNG': LOGO_MIME = "image/png"
-    except:
-        pass # ถ้าเดาไม่ได้ให้ใช้ Default
+    except: pass
 else:
-    # 2. ถ้าไม่เจอ ให้ลองหาแบบมีนามสกุล (เผื่อไว้)
     possible_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
     for f in possible_logos:
-        # เอาไฟล์แรกที่เจอเลย ไม่สนใจนามสกุล
         if os.path.isfile(f):
             LOGO_PATH = f
-            # เช็ค MIME type
             try:
                 with Image.open(f) as img:
                     if img.format == 'JPEG': LOGO_MIME = "image/jpeg"
@@ -65,7 +57,6 @@ else:
             except: pass
             break
 
-# แปลงโลโก้เป็น Base64
 LOGO_BASE64 = get_base64_image(LOGO_PATH) if LOGO_PATH else ""
 
 def get_now_th():
@@ -109,6 +100,22 @@ def create_pdf(row):
     details = str(row.get('Details', '-'))
     statement = str(row.get('Statement', '-'))
     
+    # --- ส่วนที่เพิ่ม: ดึงวันที่แก้ไขล่าสุดจาก Log ---
+    audit_log = str(row.get('Audit_Log', ''))
+    latest_date = "-"
+    if audit_log:
+        try:
+            # แยกบรรทัดและเอาบรรทัดสุดท้ายที่มีข้อความ
+            lines = [line for line in audit_log.split('\n') if line.strip()]
+            if lines:
+                last_line = lines[-1]
+                # รูปแบบ log คือ [dd/mm/yyyy HH:MM] ...
+                if '[' in last_line and ']' in last_line:
+                    # ดึงข้อความในวงเล็บก้ามปู
+                    latest_date = last_line[last_line.find('[')+1 : last_line.find(']')]
+        except: pass
+    # -----------------------------------------------
+
     printer_name = st.session_state.current_user['name'] if st.session_state.current_user else "System"
     print_time = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -126,10 +133,8 @@ def create_pdf(row):
         </div>
         """
 
-    # ส่วน HTML Logo
     logo_html = ""
     if LOGO_BASE64:
-        # ใช้ LOGO_MIME ที่เราหามาได้ เพื่อระบุประเภทไฟล์ให้ถูกต้อง
         logo_html = f'<img class="logo" src="data:{LOGO_MIME};base64,{LOGO_BASE64}">'
 
     # HTML Template
@@ -224,7 +229,10 @@ def create_pdf(row):
         <table class="info-table">
             <tr>
                 <td width="60%"><b>เลขที่รับแจ้ง:</b> {rid}</td>
-                <td width="40%" style="text-align:right;"><b>วันที่แจ้ง:</b> {date_str}</td>
+                <td width="40%" style="text-align:right;">
+                    <b>วันที่แจ้ง:</b> {date_str}<br>
+                    <span style="font-size: 14pt;"><b>วันที่บันทึกผล:</b> {latest_date}</span>
+                </td>
             </tr>
             <tr>
                 <td colspan="2"><b>ผู้แจ้ง:</b> {reporter}</td>
@@ -315,15 +323,10 @@ def officer_dashboard():
     # แสดง Logo และหัวข้อในหน้า Dashboard
     col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
     with col_h1:
-        # ใช้ st.image แสดงผล
         if LOGO_PATH and os.path.exists(LOGO_PATH):
-            try:
-                st.image(LOGO_PATH, width=80)
-            except:
-                st.write("Logo Error")
+            st.image(LOGO_PATH, width=80)
         else:
-            st.write("")
-            
+            st.write("ไม่พบโลโก้")
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
@@ -481,7 +484,7 @@ def officer_dashboard():
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
-                    # --- ปุ่ม PDF ---
+                    # --- ปุ่ม PDF (แก้ไขแล้ว) ---
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
@@ -590,24 +593,6 @@ def main_page():
                 st.session_state.current_user = accounts[pw]
                 st.rerun()
             else: st.error("รหัสผิด")
-    
-    # Debug Area
-    st.markdown("---")
-    with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
-        st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
-        st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
-        
-        found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
-        st.write(f"🖼️ ไฟล์รูปโลโก้ที่พบ ({len(found_logos)} ไฟล์):")
-        if found_logos:
-            for f in found_logos:
-                st.code(os.path.basename(f))
-        else:
-            st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
-            
-        st.write("---")
-        st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
-        st.write(f"✅ MIME Type ที่ใช้ใน PDF: `{LOGO_MIME}`")
 
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
