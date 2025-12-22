@@ -15,29 +15,39 @@ import qrcode
 import xlsxwriter
 import tempfile
 import glob
+import shutil
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
-# --- ระบบค้นหาโลโก้อัตโนมัติ (ฉลาดขึ้น) ---
-def find_logo_file():
-    # 1. ลองหาชื่อตรงๆ
-    candidates = ["school_logo.png", "school_logo.jpg", "school_logo.jpeg", "school_logo.bmp", "school_logo"]
-    for c in candidates:
-        if os.path.exists(c): return c
-    
-    # 2. ลองหาไฟล์ใดๆ ที่ชื่อขึ้นต้นด้วย school_logo
-    files = glob.glob("school_logo*")
-    # กรองเอาเฉพาะไฟล์ที่เป็นรูปภาพ (ป้องกันไปหยิบไฟล์ .py หรืออื่นๆ)
-    valid_exts = ['.png', '.jpg', '.jpeg', '.bmp', '.gif']
-    for f in files:
-        ext = os.path.splitext(f)[1].lower()
-        if ext in valid_exts or ext == '': # กรณีไม่มีนามสกุลแต่เป็นรูป
-            return f
-    return None
+# --- ส่วนจัดการระบบไฟล์ (แก้ไขใหม่ให้หาไฟล์เจอแน่นอน) ---
+def get_absolute_path(filename):
+    # หา path จริงของไฟล์ในระบบ
+    return os.path.abspath(filename)
 
-LOGO_FILE = find_logo_file()
-FONT_FILE = "THSarabunNew.ttf"
+# ค้นหาไฟล์โลโก้ (รองรับทั้งแบบมีนามสกุลและไม่มีนามสกุล)
+LOGO_FILE = None
+LOGO_FORMAT = None # ตัวแปรเก็บประเภทไฟล์รูป (PNG/JPG)
+
+# ลิสต์ชื่อไฟล์ที่เป็นไปได้
+possible_names = ["school_logo", "school_logo.png", "school_logo.jpg", "school_logo.jpeg"]
+# ค้นหาจาก glob ด้วยเผื่อชื่อไม่ตรงเป๊ะ
+found_files = glob.glob("school_logo*") + possible_names
+
+for f in found_files:
+    if os.path.exists(f) and os.path.isfile(f):
+        try:
+            # ทดสอบเปิดไฟล์เพื่อดูว่าเป็นรูปจริงไหม และนามสกุลอะไร
+            with Image.open(f) as img:
+                LOGO_FILE = f
+                LOGO_FORMAT = img.format # เก็บ format ไว้บอก FPDF (เช่น 'PNG', 'JPEG')
+                break
+        except:
+            continue
+
+# ค้นหาฟอนต์
+FONT_NAME = "THSarabunNew.ttf"
+FONT_PATH = get_absolute_path(FONT_NAME) # ใช้ Path เต็มป้องกันการหาไม่เจอ
 
 # รายชื่อสถานที่
 LOCATION_OPTIONS = [
@@ -73,37 +83,37 @@ def process_image(img_file):
 # --- 2. Class PDF ---
 class ReportPDF(FPDF):
     def header(self):
-        # ตรวจสอบฟอนต์ก่อนใช้งาน (ป้องกัน Error)
-        if os.path.exists(FONT_FILE):
+        # [แก้ไข] โหลดฟอนต์โดยใช้ Path เต็ม และตรวจสอบว่าไฟล์มีอยู่จริง
+        if os.path.exists(FONT_PATH):
             try:
-                self.add_font('ThaiFont', '', FONT_FILE, uni=True)
+                self.add_font('ThaiFont', '', FONT_PATH, uni=True)
                 self.set_font('ThaiFont', '', 20)
-            except: pass # ถ้าโหลดไม่ได้ จะไปใช้ default ในส่วนเนื้อหา
+            except: 
+                self.set_font('Arial', '', 20)
+        else:
+            self.set_font('Arial', '', 20)
         
-        # วางโลโก้ (ถ้าหาเจอ)
+        # [แก้ไข] วางโลโก้โดยระบุประเภทไฟล์ชัดเจน (แก้ปัญหาไฟล์ไม่มีนามสกุล)
         if LOGO_FILE and os.path.exists(LOGO_FILE):
             try:
                 # x=15, y=10, w=25
-                self.image(LOGO_FILE, x=15, y=10, w=25)
+                # type=LOGO_FORMAT ช่วยให้ FPDF อ่านไฟล์ที่ไม่มีนามสกุลได้ถูกต้อง
+                self.image(LOGO_FILE, x=15, y=10, w=25, type=LOGO_FORMAT)
             except: pass
         
         # Watermark
         try:
-            # ใช้ฟอนต์ที่มีอยู่ ณ ตอนนั้น
+            current_font = self.font_family
             self.set_font_size(40)
             self.set_text_color(240, 240, 240)
             self.set_xy(50, 100)
             self.cell(0, 0, txt="เอกสารลับ - Confidential", align='C')
-            self.set_text_color(0, 0, 0) # กลับเป็นสีดำ
+            self.set_text_color(0, 0, 0)
+            self.set_font(current_font, '', 20)
         except: pass
 
         self.set_y(15)
-        self.set_x(45) # ขยับหนีโลโก้
-        
-        # พยายามเซ็ตฟอนต์ไทยอีกครั้ง
-        if os.path.exists(FONT_FILE): self.set_font('ThaiFont', '', 20)
-        else: self.set_font('Arial', '', 20) # Fallback
-        
+        self.set_x(45) # ขยับข้อความหนีโลโก้
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
         
         self.set_font_size(16)
@@ -116,10 +126,13 @@ class ReportPDF(FPDF):
 
     def footer(self):
         self.set_y(-15)
-        if os.path.exists(FONT_FILE):
-            self.set_font('ThaiFont', '', 10)
-        else:
-            self.set_font('Arial', '', 8)
+        try:
+            if os.path.exists(FONT_PATH):
+                self.add_font('ThaiFont', '', FONT_PATH, uni=True)
+                self.set_font('ThaiFont', '', 10)
+            else:
+                self.set_font('Arial', '', 8)
+        except: pass
         
         printer = "System"
         if 'current_user' in st.session_state and st.session_state.current_user:
@@ -129,17 +142,17 @@ class ReportPDF(FPDF):
         self.set_x(10)
         self.cell(0, 10, txt=f"พิมพ์โดย: {printer} | เวลา: {now_str} | หน้า {self.page_no()}", align='R')
 
-# --- ฟังก์ชันสร้าง PDF (แก้ไขปัญหา Font และ Encoding) ---
+# --- ฟังก์ชันสร้าง PDF (แก้ไขให้รองรับภาษาไทยสมบูรณ์) ---
 def create_pdf(row_data):
     tmp_path = None
     try:
-        # เคลียร์ Cache ฟอนต์เก่า
+        # 1. เคลียร์ Cache ฟอนต์เก่าที่อาจทำให้ตัวหนังสือแตก
         for pkl_file in glob.glob("*.pkl"):
             try: os.remove(pkl_file)
             except: pass
 
-        # **สำคัญที่สุด**: เช็คไฟล์ฟอนต์ ถ้าไม่มีต้องแจ้ง Error ทันที
-        if not os.path.exists(FONT_FILE): 
+        # 2. ตรวจสอบฟอนต์ขั้นสุดท้าย
+        if not os.path.exists(FONT_PATH): 
             return b"ERROR_FONT_MISSING"
 
         pdf = ReportPDF()
@@ -147,9 +160,9 @@ def create_pdf(row_data):
         pdf.set_auto_page_break(True, margin=20)
         pdf.add_page()
         
-        # ตั้งค่าฟอนต์เนื้อหา
+        # ตั้งค่าฟอนต์เนื้อหา (ใช้ Path เต็ม)
         epw = pdf.w - 2 * pdf.l_margin
-        pdf.add_font('ThaiFont', '', FONT_FILE, uni=True)
+        pdf.add_font('ThaiFont', '', FONT_PATH, uni=True)
         pdf.set_font('ThaiFont', '', 14)
         
         # QR Code
@@ -162,10 +175,10 @@ def create_pdf(row_data):
             pdf.image(qr_buffer, x=170, y=10, w=25, type='PNG')
         except: pass
 
-        # ข้อมูลเบื้องต้น
+        # ส่วนที่ 1: ข้อมูลเบื้องต้น
         pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {rid_text}", ln=0)
         pdf.cell(epw*0.4, 8, txt=f"วันที่แจ้ง: {clean_val(row_data.get('Timestamp'))}", ln=1, align='R')
-        pdf.ln(8) # เว้นบรรทัด
+        pdf.ln(8)
         
         text_info = f"ผู้แจ้ง: {clean_val(row_data.get('Reporter'))}\n" \
                     f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}"
@@ -173,15 +186,14 @@ def create_pdf(row_data):
         pdf.ln(2)
 
         pdf.set_fill_color(245, 245, 245)
-        # รวมหัวข้อและรายละเอียดไว้ใน Multi_cell เดียวกันเพื่อความสวยงาม
-        detail_content = f"รายละเอียดเหตุการณ์:\n{clean_val(row_data.get('Details'))}"
-        pdf.multi_cell(epw, 7, txt=detail_content, border=1, fill=True)
+        detail_txt = f"รายละเอียดเหตุการณ์:\n{clean_val(row_data.get('Details'))}"
+        pdf.multi_cell(epw, 7, txt=detail_txt, border=1, fill=True)
         pdf.ln(5)
         
-        # ผลการสอบสวน
-        pdf.set_font('ThaiFont', '', 16)
+        # ส่วนที่ 2: ผลการสอบสวน
+        pdf.set_font_size(16)
         pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
-        pdf.set_font('ThaiFont', '', 14)
+        pdf.set_font_size(14)
         
         statement_text = clean_val(row_data.get('Statement'))
         if not statement_text: statement_text = "-"
@@ -198,9 +210,10 @@ def create_pdf(row_data):
                 pdf.image(img_io, w=60)
             except: pass
 
-        # ลายเซ็น
+        # ส่วนที่ 3: ลายมือชื่อ
         pdf.ln(10)
         if pdf.get_y() > 230: pdf.add_page()
+        
         col_w = epw / 2
         y1 = pdf.get_y()
         
@@ -503,15 +516,29 @@ def officer_dashboard():
                         st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
                         col_pdf_1, col_pdf_2 = st.columns([3, 1])
                         with col_pdf_1:
-                            st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF (ประกอบด้วยข้อมูลผู้แจ้ง, รายละเอียด, และผลการสอบสวน)")
+                            st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF")
                         with col_pdf_2:
                             pdf_bytes = create_pdf(row)
                             
-                            if isinstance(pdf_bytes, bytes) and pdf_bytes.startswith(b"ERROR"):
-                                err_msg = pdf_bytes.decode('utf-8', errors='ignore')
+                            # [แก้ไข] เช็คประเภทข้อมูลก่อนเรียก startswith
+                            is_error = False
+                            err_msg = ""
+                            check_val = pdf_bytes
+                            
+                            if hasattr(pdf_bytes, "getvalue"): # ถ้าเป็น BytesIO
+                                check_val = pdf_bytes.getvalue()
+                            
+                            if isinstance(check_val, bytes) and check_val.startswith(b"ERROR"):
+                                is_error = True
+                                err_msg = check_val.decode('utf-8', errors='ignore')
+                            elif isinstance(check_val, str) and check_val.startswith("ERROR"):
+                                is_error = True
+                                err_msg = check_val
+
+                            if is_error:
                                 st.error(f"ระบบ PDF ขัดข้อง: {err_msg}")
                                 if "FONT_MISSING" in err_msg:
-                                    st.warning("⚠️ สำคัญ: กรุณาอัปโหลดไฟล์ 'THSarabunNew.ttf' ไว้ที่เดียวกับ app.py มิฉะนั้นภาษาไทยจะเพี้ยน")
+                                    st.warning("กรุณาตรวจสอบว่ามีไฟล์ 'THSarabunNew.ttf' อยู่ในโฟลเดอร์เดียวกับโปรแกรม")
                             else:
                                 st.download_button(
                                     label="ดาวน์โหลด PDF",
@@ -529,8 +556,10 @@ def officer_dashboard():
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
+    # แสดงโลโก้หน้าแรก (ถ้าเจอไฟล์)
     if LOGO_FILE and os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
+    
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
     
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
