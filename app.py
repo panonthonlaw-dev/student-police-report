@@ -13,7 +13,6 @@ from PIL import Image
 import io
 import qrcode
 import xlsxwriter
-import tempfile # (เพิ่มบรรทัดนี้: เพื่อแก้ปัญหา PDF Error)
 
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
@@ -97,9 +96,10 @@ class ReportPDF(FPDF):
 
 def create_pdf(row_data):
     try:
-        if not os.path.exists(FONT_FILE): return "ERROR: ไม่พบไฟล์ฟอนต์ THSarabunNew.ttf ในระบบ"
-        
-        # สร้าง PDF Object
+        # ตรวจสอบไฟล์ฟอนต์ก่อนเริ่ม
+        if not os.path.exists(FONT_FILE): 
+            return b"ERROR_FONT_MISSING" # ส่งค่ากลับเป็น bytes เพื่อไม่ให้ logic ปลายทางพัง
+            
         pdf = ReportPDF()
         pdf.set_margins(20, 20, 20)
         pdf.add_page()
@@ -178,20 +178,12 @@ def create_pdf(row_data):
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน", align='C', ln=1)
 
-        # --- แก้ไขส่วนนี้: ใช้ TempFile เพื่อป้องกัน Encoding Error 100% ---
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            pdf.output(tmp.name)
-            tmp.flush()
-            with open(tmp.name, "rb") as f:
-                pdf_bytes = f.read()
-        
-        try:
-            os.unlink(tmp.name) # ลบไฟล์ชั่วคราวทิ้ง
-        except: pass
-            
-        return pdf_bytes
+        # แก้ไขสำคัญ: ใช้ dest='S' แล้ว encode latin-1 เพื่อให้ได้ Bytes ที่ถูกต้องสำหรับ FPDF 1.7.x
+        return pdf.output(dest='S').encode('latin-1')
 
-    except Exception as e: return f"ERROR: {str(e)}"
+    except Exception as e: 
+        # ส่งคืน error message เป็น bytes เพื่อให้ตรวจสอบได้ง่าย
+        return f"ERROR: {str(e)}".encode('utf-8')
 
 # --- 3. Helper Functions ---
 def view_case(rid):
@@ -443,14 +435,17 @@ def officer_dashboard():
                         with col_pdf_1:
                             st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF (ประกอบด้วยข้อมูลผู้แจ้ง, รายละเอียด, และผลการสอบสวน)")
                         with col_pdf_2:
-                            pdf_data = create_pdf(row)
-                            # ตรวจสอบว่ามี Error หรือไม่
-                            if isinstance(pdf_data, str) and pdf_data.startswith("ERROR"):
-                                st.error(f"ระบบ PDF ขัดข้อง: {pdf_data}")
+                            pdf_bytes_or_err = create_pdf(row)
+                            
+                            # ตรวจสอบว่าเป็น Error หรือไม่
+                            if pdf_bytes_or_err.startswith(b"ERROR"):
+                                st.error(f"ระบบ PDF ขัดข้อง: {pdf_bytes_or_err.decode('utf-8')}")
+                            elif pdf_bytes_or_err.startswith(b"ERROR_FONT"):
+                                st.error("⚠️ ไม่พบไฟล์ฟอนต์ THSarabunNew.ttf ในระบบ กรุณาอัปโหลดไฟล์")
                             else:
                                 st.download_button(
                                     label="ดาวน์โหลด PDF",
-                                    data=pdf_data,
+                                    data=pdf_bytes_or_err,
                                     file_name=f"Report_{sid}.pdf",
                                     mime="application/pdf",
                                     type="primary",
