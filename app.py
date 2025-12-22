@@ -72,10 +72,8 @@ def process_image(img_file):
         img = Image.open(img_file)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
-        
         img.thumbnail((800, 800))
         buffer = io.BytesIO()
-        
         img.save(buffer, format="JPEG", quality=65, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
@@ -91,7 +89,7 @@ LOCATION_OPTIONS = [
     "อื่นๆ"
 ]
 
-# --- ฟังก์ชันสร้าง PDF (WeasyPrint) ---
+# --- ฟังก์ชันสร้าง PDF (แก้ไข CSS ตัวอักษรตั้งแถว) ---
 def create_pdf(row):
     rid = str(row.get('Report_ID', ''))
     date_str = str(row.get('Timestamp', ''))
@@ -133,6 +131,7 @@ def create_pdf(row):
     if LOGO_BASE64:
         logo_html = f'<img class="logo" src="data:{LOGO_MIME};base64,{LOGO_BASE64}">'
 
+    # CSS แก้ไข: ลบ word-wrap ออก ใช้ white-space แทนเพื่อแก้สระลอย/ตัวตั้ง
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -154,7 +153,7 @@ def create_pdf(row):
             body {{
                 font-family: 'THSarabunNew';
                 font-size: 16pt;
-                line-height: 1.2;
+                line-height: 1.3;
             }}
             .header {{
                 text-align: center;
@@ -199,7 +198,7 @@ def create_pdf(row):
                 padding: 10px;
                 margin-bottom: 10px;
                 min-height: 50px;
-                word-wrap: break-word; 
+                white-space: pre-wrap; /* แก้ปัญหาตัวอักษรตั้งแถว */
             }}
             .signature-table {{
                 width: 100%;
@@ -300,6 +299,7 @@ def calculate_pagination(key, total_items, limit=5):
     end_idx = start_idx + limit
     return start_idx, end_idx, current_page, total_pages
 
+# --- Callbacks ---
 def view_case(rid):
     st.session_state.selected_case_id = rid
     st.session_state.view_mode = "detail"
@@ -315,7 +315,6 @@ def clear_search_callback():
 # --- 4. Dashboard (เจ้าหน้าที่) ---
 def officer_dashboard():
     user = st.session_state.current_user
-    # แสดง Logo และหัวข้อในหน้า Dashboard
     col_h1, col_h2, col_h3 = st.columns([1, 4, 1])
     with col_h1:
         if LOGO_PATH and os.path.exists(LOGO_PATH):
@@ -324,14 +323,15 @@ def officer_dashboard():
     with col_h2:
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
-        st.write("") # Spacer
+        st.write("") 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
 
     try:
         df = conn.read(ttl="1m")
         df = df.fillna("")
-        df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True)
+        # [สำคัญ] ทำความสะอาด ID เพื่อให้ค้นหาเจอแน่นอน
+        df['Report_ID'] = df['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
         if st.session_state.view_mode == "list":
             tab_list, tab_dash = st.tabs(["📋 รายการแจ้งเหตุ", "📊 แดชบอร์ดสถิติ"])
@@ -360,7 +360,9 @@ def officer_dashboard():
                 for index, row in df_pending.iloc[start_p:end_p].iterrows():
                     raw_rid = str(row.get('Report_ID', '')).strip()
                     cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                    with cc1: st.button(f"📝 {raw_rid}", key=f"p_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
+                    with cc1: 
+                        # ปุ่มกดเพื่อดูรายละเอียด
+                        st.button(f"📝 {raw_rid}", key=f"p_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
                     with cc2: st.write(row.get('Timestamp', '-'))
                     with cc3: st.write(row.get('Incident_Type', '-'))
                     with cc4: st.markdown(f"<span style='color:orange;font-weight:bold'>⏳ รอสอบสวน</span>", unsafe_allow_html=True)
@@ -386,7 +388,8 @@ def officer_dashboard():
                 for index, row in df_finished.iloc[start_f:end_f].iterrows():
                     raw_rid = str(row.get('Report_ID', '')).strip()
                     cc1, cc2, cc3, cc4 = st.columns([2.5, 2, 3, 1.5])
-                    with cc1: st.button(f"✅ {raw_rid}", key=f"f_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
+                    with cc1: 
+                        st.button(f"✅ {raw_rid}", key=f"f_{index}", use_container_width=True, on_click=view_case, args=(raw_rid,))
                     with cc2: st.write(row.get('Timestamp', '-'))
                     with cc3: st.write(row.get('Incident_Type', '-'))
                     with cc4: st.markdown(f"<span style='color:green;font-weight:bold'>✅ เรียบร้อย</span>", unsafe_allow_html=True)
@@ -414,7 +417,6 @@ def officer_dashboard():
                     c_text1, c_text2 = st.columns(2)
                     with c_text1:
                         st.markdown("**📌 สรุปยอดตามสถานที่ (Top 5)**")
-                        # แสดงผล Top 5 และ %
                         loc_counts = df['Location'].value_counts().head(5)
                         for loc, count in loc_counts.items():
                             percent = (count / total_cases) * 100
@@ -422,7 +424,6 @@ def officer_dashboard():
                             
                     with c_text2:
                         st.markdown("**📌 สรุปยอดตามประเภทเหตุ**")
-                        # แสดงผล Top 5 และ %
                         type_counts = df['Incident_Type'].value_counts().head(5)
                         for inc, count in type_counts.items():
                             percent = (count / total_cases) * 100
@@ -450,44 +451,135 @@ def officer_dashboard():
                     with adv1:
                         st.markdown("**🔥 ความสัมพันธ์: สถานที่ vs ประเภทเหตุ**")
                         corr_df = pd.crosstab(df['Location'], df['Incident_Type'])
-                        # ลบ gradient ออกเพื่อแก้ปัญหา matplotlib
                         st.dataframe(corr_df, use_container_width=True, height=300)
                     with adv2:
                         st.markdown("**🕒 ช่วงเวลาเกิดเหตุ (Heatmap Analysis)**")
                         heatmap_df = pd.crosstab(df['DayTH'], df['Hour'])
-                        # ลบ gradient ออก
                         st.dataframe(heatmap_df, use_container_width=True, height=300)
     
     except Exception as e: st.error(f"Error: {e}")
 
-    # --- ส่วนตรวจสอบไฟล์ ย้ายมาซ่อนตรงนี้ ---
+    # Debug Menu
     st.markdown("---")
-    if user.get('role') == 'admin': # เช็คว่าเป็น admin เบื้องต้นจาก session
+    if user.get('role') == 'admin':
         with st.expander("🛠️ สำหรับผู้ดูแลระบบ (ตรวจสอบไฟล์)"):
-            # เพิ่มการล็อกรหัสผ่าน
             admin_pwd = st.text_input("กรุณาใส่รหัส Admin เพื่อเข้าถึงข้อมูล:", type="password", key="debug_admin_pwd")
             if admin_pwd == "Patwit1510":
                 st.success("Access Granted")
                 st.write(f"📂 โฟลเดอร์ปัจจุบัน: `{BASE_DIR}`")
                 st.write(f"📄 ไฟล์ฟอนต์: `{FONT_FILE}` ({'✅ พบ' if os.path.exists(FONT_FILE) else '❌ ไม่พบ'})")
-                
                 found_logos = glob.glob(os.path.join(BASE_DIR, "school_logo*"))
                 st.write(f"🖼️ ไฟล์รูปโลโก้ที่พบ ({len(found_logos)} ไฟล์):")
                 if found_logos:
-                    for f in found_logos:
-                        st.code(os.path.basename(f))
-                else:
-                    st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
-                    
+                    for f in found_logos: st.code(os.path.basename(f))
+                else: st.error("❌ ไม่พบไฟล์ที่ชื่อขึ้นต้นด้วย school_logo")
                 st.write("---")
                 st.write(f"✅ ไฟล์โลโก้ที่ระบบเลือกใช้: `{os.path.basename(LOGO_PATH) if LOGO_PATH else 'ไม่มี'}`")
                 st.write(f"✅ MIME Type ที่ใช้ใน PDF: `{LOGO_MIME}`")
             elif admin_pwd:
                 st.error("รหัสผ่านไม่ถูกต้อง")
 
+        elif st.session_state.view_mode == "detail":
+            # ปุ่มย้อนกลับ (ต้องวางไว้บนสุดของ Detail view)
+            st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, type="secondary", use_container_width=True)
+            
+            sid = str(st.session_state.selected_case_id).strip() # ตัดช่องว่างออก
+            sel = df[df['Report_ID'] == sid]
+            
+            if not sel.empty:
+                idx = sel.index[0]
+                row = sel.iloc[0]
+                
+                current_status = clean_val(row.get('Status'))
+                is_admin = user.get('role') == 'admin'
+                is_finished = (current_status == "ดำเนินการเรียบร้อย")
+                is_locked = True if (is_finished and st.session_state.unlock_password != "Patwit1510") else False
+                if not is_admin: is_locked = True
+
+                with st.container(border=True):
+                    st.markdown(f"### 📝 เลขที่รับแจ้ง: {sid}")
+                    st.write(f"**ผู้แจ้ง:** {row.get('Reporter')} | **สถานที่:** {row.get('Location')}")
+                    st.info(f"**รายละเอียด:** {row.get('Details')}")
+                    if clean_val(row.get('Image_Data')):
+                        st.image(base64.b64decode(row['Image_Data']), width=400, caption="หลักฐานจากผู้แจ้ง")
+
+                    st.markdown("---")
+                    st.write("#### ✍️ บันทึกผลการสอบสวน")
+                    
+                    if is_locked and is_finished and is_admin:
+                        st.markdown("<div style='color:red;'>🔒 เคสนี้ดำเนินการเรียบร้อยแล้ว (ใช้รหัสเจ้าหน้าที่ระดับสูงสุด)</div>", unsafe_allow_html=True)
+                        cpwd, cbtn = st.columns([3, 1])
+                        pwd_in = cpwd.text_input("รหัสปลดล็อค", type="password")
+                        if cbtn.button("ปลดล็อค"):
+                            if pwd_in == "Patwit1510": st.session_state.unlock_password = "Patwit1510"; st.rerun()
+
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=is_locked)
+                        v_wit = st.text_input("พยาน", value=clean_val(row.get('Witness')), disabled=is_locked)
+                        v_stu = st.text_input("ตำรวจนักเรียน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
+                    with c2:
+                        v_acc = st.text_input("ผู้ถูกกล่าวหา *", value=clean_val(row.get('Accused')), disabled=is_locked)
+                        v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
+                    
+                    v_stmt = st.text_area("ผลการดำเนินการสอบสวน *", value=clean_val(row.get('Statement')), disabled=is_locked)
+                    
+                    ev_img_file = st.file_uploader("📸 แนบรูปหลักฐานการสอบสวนเพิ่มเติม", type=['jpg','png'], disabled=is_locked)
+                    if clean_val(row.get('Evidence_Image')):
+                        st.image(base64.b64decode(row['Evidence_Image']), width=200, caption="รูปหลักฐานปัจจุบัน")
+
+                    opts = ["รอดำเนินการ", "อยู่ระหว่างการดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"]
+                    v_sta = st.selectbox("สถานะปัจจุบัน", opts, index=opts.index(current_status) if current_status in opts else 0, disabled=is_locked)
+
+                    if not is_locked:
+                        if st.button("💾 บันทึกข้อมูลและประวัติ", type="primary", use_container_width=True):
+                            final_img = process_image(ev_img_file) if ev_img_file else row.get('Evidence_Image')
+                            new_log = f"[{get_now_th().strftime('%d/%m/%Y %H:%M')}] แก้ไขโดย {user['name']}"
+                            old_log = clean_val(row.get('Audit_Log'))
+                            
+                            df.at[idx, 'Victim'] = v_vic
+                            df.at[idx, 'Accused'] = v_acc
+                            df.at[idx, 'Witness'] = v_wit
+                            df.at[idx, 'Teacher_Investigator'] = v_tea
+                            df.at[idx, 'Student_Police_Investigator'] = v_stu
+                            df.at[idx, 'Statement'] = v_stmt
+                            df.at[idx, 'Status'] = v_sta
+                            df.at[idx, 'Evidence_Image'] = final_img
+                            df.at[idx, 'Audit_Log'] = f"{old_log}\n{new_log}" if old_log else new_log
+                            conn.update(data=df)
+                            st.cache_data.clear()
+                            st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
+
+                    # --- ปุ่ม PDF ---
+                    st.markdown("---")
+                    with st.container(border=True):
+                        st.markdown("#### 🖨️ เมนูพิมพ์รายงาน")
+                        col_pdf_1, col_pdf_2 = st.columns([3, 1])
+                        with col_pdf_1:
+                            st.caption("ดาวน์โหลดรายงานสรุปผลการสอบสวนในรูปแบบ PDF (ประกอบด้วยข้อมูลผู้แจ้ง, รายละเอียด, และผลการสอบสวน)")
+                        with col_pdf_2:
+                            try:
+                                pdf_bytes = create_pdf(row)
+                                st.download_button(
+                                    label="ดาวน์โหลด PDF",
+                                    data=pdf_bytes,
+                                    file_name=f"Report_{sid}.pdf",
+                                    mime="application/pdf",
+                                    type="primary",
+                                    use_container_width=True
+                                )
+                            except Exception as e:
+                                st.error(f"เกิดข้อผิดพลาดในการสร้าง PDF: {e}")
+                                if "pango" in str(e).lower():
+                                    st.error("⚠️ กรุณาตรวจสอบว่าไฟล์ packages.txt มีคำว่า 'pango' แล้ว")
+                    
+                    with st.expander("📜 ดูประวัติการแก้ไข (Audit Trail)"):
+                        st.text(row.get('Audit_Log', 'ไม่มีประวัติ'))
+            else:
+                st.error(f"ไม่พบข้อมูลของเลขที่รับแจ้ง: {sid}")
+
 # --- 5. หน้าหลักสำหรับนักเรียน ---
 def main_page():
-    # แสดงโลโก้ในหน้าหลัก (ถ้ามี)
     if LOGO_PATH and os.path.exists(LOGO_PATH):
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
@@ -513,8 +605,22 @@ def main_page():
                 </div>
             """, unsafe_allow_html=True)
             
-            if st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
-                if not pdpa_check:
+            # --- [UPDATE ข้อ 3] ระบบป้องกันสแปม ---
+            submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
+            
+            if submitted:
+                # 1. เช็คเวลา (Time Spam Check)
+                if 'last_submit_time' in st.session_state:
+                    time_diff = (datetime.now() - st.session_state.last_submit_time).total_seconds()
+                    if time_diff < 60:
+                        st.error(f"⚠️ กรุณารออีก {60 - int(time_diff)} วินาที ก่อนแจ้งเหตุครั้งต่อไป")
+                        st.stop()
+
+                # 2. เช็คความยาว (Quality Check)
+                if len(det) < 10:
+                    st.error("⚠️ กรุณาระบุรายละเอียดเหตุการณ์ให้ชัดเจนกว่านี้ (อย่างน้อย 10 ตัวอักษร)")
+                
+                elif not pdpa_check:
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
@@ -522,9 +628,13 @@ def main_page():
                     new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
                     conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
                     st.cache_data.clear()
+                    
+                    st.session_state.last_submit_time = datetime.now() # บันทึกเวลา
+                    
                     st.success(f"ส่งข้อมูลสำเร็จ! รหัสรับแจ้งคือ: {rid}")
                     st.info("⚠️ กรุณาจดจำเลข 4 ตัวท้ายของรหัสรับแจ้ง เพื่อใช้ตรวจสอบสถานะ")
-                else: st.error("กรุณากรอกข้อมูลให้ครบ")
+                else: 
+                    st.error("กรุณากรอกข้อมูลให้ครบ")
 
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะการดำเนินงาน")
