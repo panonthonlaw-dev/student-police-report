@@ -32,25 +32,22 @@ def process_image(img_file):
         return base64.b64encode(buffer.getvalue()).decode()
     except: return ""
 
-# --- 2. Class PDF (ปรับปรุงใหม่: แก้ตกขอบ + ลายเซ็นครบ) ---
+# --- 2. Class PDF ---
 class ReportPDF(FPDF):
     def header(self):
         if os.path.exists(FONT_FILE):
             self.add_font('ThaiFont', '', FONT_FILE)
             self.set_font('ThaiFont', '', 20)
         if os.path.exists(LOGO_FILE):
-            # ปรับตำแหน่งโลโก้ให้สวยงาม
             self.image(LOGO_FILE, x=15, y=10, w=25)
         
         self.set_y(15)
-        # ขยับข้อความหัวกระดาษหลบโลโก้
         self.set_x(45)
         self.cell(0, 10, txt="สถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", ln=True, align='L')
         self.set_font('ThaiFont', '', 16)
         self.set_x(45)
         self.cell(0, 10, txt="ใบสรุปรายงานเหตุการณ์และผลการดำเนินการสอบสวน", ln=True, align='L')
         self.ln(10)
-        # เส้นคั่นหัวกระดาษ
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(5)
 
@@ -72,44 +69,35 @@ def create_pdf(row_data):
     try:
         if not os.path.exists(FONT_FILE): return f"MISSING_FONT"
         pdf = ReportPDF()
-        # ตั้งค่าขอบกระดาษ (ซ้าย, บน, ขวา)
         pdf.set_margins(20, 20, 20)
         pdf.add_page()
-        
-        # คำนวณความกว้างพื้นที่เขียน (Effective Page Width)
         epw = pdf.w - 2 * pdf.l_margin
-        
         pdf.add_font('ThaiFont', '', FONT_FILE)
         pdf.set_font('ThaiFont', '', 14)
         
-        # --- ส่วนที่ 1: ข้อมูลเบื้องต้น ---
-        # ใช้ Multi_cell เพื่อป้องกันตกขอบ
+        # ส่วนที่ 1: ข้อมูลเบื้องต้น
         pdf.cell(epw*0.6, 8, txt=f"เลขที่รับแจ้ง: {clean_val(row_data.get('Report_ID'))}", ln=0)
         pdf.cell(epw*0.4, 8, txt=f"วันที่แจ้ง: {clean_val(row_data.get('Timestamp'))}", ln=1, align='R')
         pdf.ln(2)
         
-        pdf.set_font('ThaiFont', '', 14)
         text_info = f"ผู้แจ้ง: {clean_val(row_data.get('Reporter'))}\n" \
                     f"ประเภทเหตุ: {clean_val(row_data.get('Incident_Type'))} | สถานที่: {clean_val(row_data.get('Location'))}"
         pdf.multi_cell(epw, 7, txt=text_info, border=0)
         pdf.ln(2)
 
-        # รายละเอียด (ใช้ multi_cell แก้ปัญหาตกขอบ)
-        pdf.set_fill_color(245, 245, 245) # สีพื้นหลังจางๆ
+        pdf.set_fill_color(245, 245, 245)
         pdf.multi_cell(epw, 7, txt=f"รายละเอียดเหตุการณ์:\n{clean_val(row_data.get('Details'))}", border=1, fill=True)
         pdf.ln(5)
         
-        # --- ส่วนที่ 2: ผลการสอบสวน ---
+        # ส่วนที่ 2: ผลการสอบสวน
         pdf.set_font('ThaiFont', '', 16)
         pdf.cell(0, 8, txt="ผลการดำเนินการสอบสวน:", ln=True)
         pdf.set_font('ThaiFont', '', 14)
         
-        # กล่องผลการสอบสวน
         statement_text = clean_val(row_data.get('Statement'))
         if not statement_text: statement_text = "-"
         pdf.multi_cell(epw, 7, txt=statement_text, border=1)
         
-        # รูปหลักฐาน (ถ้ามี)
         ev_img = clean_val(row_data.get('Evidence_Image'))
         if ev_img:
             pdf.ln(5)
@@ -117,60 +105,38 @@ def create_pdf(row_data):
             try:
                 img_data = base64.b64decode(ev_img)
                 img_io = io.BytesIO(img_data)
-                pdf.image(img_io, w=60) # ปรับขนาดรูปไม่ให้ใหญ่เกิน
+                pdf.image(img_io, w=60)
             except: pass
 
-        # --- ส่วนที่ 3: ลงลายมือชื่อ (5 ฝ่าย) ---
+        # ส่วนที่ 3: ลงลายมือชื่อ 5 ฝ่าย
         pdf.ln(15)
-        
-        # เช็คหน้ากระดาษ ถ้าเหลือน้อยให้ขึ้นหน้าใหม่
         if pdf.get_y() > 220: pdf.add_page()
-        
         col_w = epw / 2
-        
-        # แถวที่ 1: ผู้เสียหาย - ผู้ถูกกล่าวหา
         y1 = pdf.get_y()
         
-        # ซ้าย: ผู้เสียหาย
-        pdf.set_xy(20, y1)
-        pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_x(20)
-        pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C', ln=1)
-        pdf.set_x(20)
-        pdf.cell(col_w, 6, txt="ผู้เสียหาย", align='C', ln=0)
+        # แถว 1
+        pdf.set_xy(20, y1); pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
+        pdf.set_x(20); pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Victim'))} )", align='C', ln=1)
+        pdf.set_x(20); pdf.cell(col_w, 6, txt="ผู้เสียหาย", align='C', ln=0)
         
-        # ขวา: ผู้ถูกกล่าวหา
-        pdf.set_xy(20 + col_w, y1)
-        pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_x(20 + col_w)
-        pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Accused'))} )", align='C', ln=1)
-        pdf.set_x(20 + col_w)
-        pdf.cell(col_w, 6, txt="ผู้ถูกกล่าวหา", align='C', ln=1)
+        pdf.set_xy(20 + col_w, y1); pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
+        pdf.set_x(20 + col_w); pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Accused'))} )", align='C', ln=1)
+        pdf.set_x(20 + col_w); pdf.cell(col_w, 6, txt="ผู้ถูกกล่าวหา", align='C', ln=1)
         
-        pdf.ln(12) # เว้นบรรทัด
-        
-        # แถวที่ 2: ตำรวจนักเรียน - พยาน
+        pdf.ln(12)
         y2 = pdf.get_y()
         
-        # ซ้าย: ตำรวจนักเรียน
-        pdf.set_xy(20, y2)
-        pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_x(20)
-        pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C', ln=1)
-        pdf.set_x(20)
-        pdf.cell(col_w, 6, txt="ตำรวจนักเรียนผู้สอบสวน", align='C', ln=0)
+        # แถว 2
+        pdf.set_xy(20, y2); pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
+        pdf.set_x(20); pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Student_Police_Investigator'))} )", align='C', ln=1)
+        pdf.set_x(20); pdf.cell(col_w, 6, txt="ตำรวจนักเรียนผู้สอบสวน", align='C', ln=0)
         
-        # ขวา: พยาน
-        pdf.set_xy(20 + col_w, y2)
-        pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
-        pdf.set_x(20 + col_w)
-        pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Witness'))} )", align='C', ln=1)
-        pdf.set_x(20 + col_w)
-        pdf.cell(col_w, 6, txt="พยาน", align='C', ln=1)
+        pdf.set_xy(20 + col_w, y2); pdf.cell(col_w, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
+        pdf.set_x(20 + col_w); pdf.cell(col_w, 6, txt=f"( {clean_val(row_data.get('Witness'))} )", align='C', ln=1)
+        pdf.set_x(20 + col_w); pdf.cell(col_w, 6, txt="พยาน", align='C', ln=1)
 
-        pdf.ln(15) # เว้นบรรทัดเยอะหน่อยก่อนถึงครู
-
-        # แถวที่ 3: ครูผู้สอบสวน (ตรงกลาง)
+        pdf.ln(15)
+        # แถว 3 (ครู)
         pdf.cell(epw, 6, txt="ลงชื่อ..........................................................", align='C', ln=1)
         pdf.cell(epw, 6, txt=f"( {clean_val(row_data.get('Teacher_Investigator'))} )", align='C', ln=1)
         pdf.cell(epw, 6, txt="ครูผู้สอบสวน / หัวหน้างานปกครอง", align='C', ln=1)
@@ -269,7 +235,6 @@ def officer_dashboard():
                 row = sel.iloc[0]
                 st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list)
                 
-                # Check Lock
                 current_status = clean_val(row.get('Status'))
                 is_admin = user.get('role') == 'admin'
                 is_finished = (current_status == "ดำเนินการเรียบร้อย")
@@ -293,7 +258,6 @@ def officer_dashboard():
                         if cbtn.button("ปลดล็อค"):
                             if pwd_in == "Patwit1510": st.session_state.unlock_password = "Patwit1510"; st.rerun()
 
-                    # ฟอร์มกรอกข้อมูล 5 ฝ่าย
                     c1, c2 = st.columns(2)
                     with c1:
                         v_vic = st.text_input("ผู้เสียหาย *", value=clean_val(row.get('Victim')), disabled=is_locked)
@@ -342,28 +306,74 @@ def officer_dashboard():
 
     except Exception as e: st.error(f"Error: {e}")
 
-# --- 5. หน้าหลักแจ้งเหตุ ---
+# --- 5. หน้าหลักสำหรับนักเรียน (เพิ่มแท็บค้นหา) ---
 def main_page():
     if os.path.exists(LOGO_FILE):
         c1, c2, c3 = st.columns([5, 1, 5]); c2.image(LOGO_FILE, width=100)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งความตำรวจนักเรียน</h1>", unsafe_allow_html=True)
     
-    with st.form("report_form"):
-        rep = st.text_input("ชื่อผู้แจ้ง *")
-        typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
-        loc = st.text_input("สถานที่เกิดเหตุ *")
-        det = st.text_area("รายละเอียดเหตุการณ์ *")
-        img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
+    # สร้าง Tabs
+    tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
+    
+    # Tab 1: แจ้งเหตุ
+    with tab1:
+        with st.form("report_form"):
+            rep = st.text_input("ชื่อผู้แจ้ง *")
+            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท", "สารเสพติด", "อาวุธ", "ลักทรัพย์", "บูลลี่", "อื่นๆ"])
+            loc = st.text_input("สถานที่เกิดเหตุ *")
+            det = st.text_area("รายละเอียดเหตุการณ์ *")
+            img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
+            
+            if st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
+                if rep and loc and det:
+                    rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+                    df_old = conn.read(ttl="1m")
+                    new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
+                    conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
+                    st.cache_data.clear()
+                    st.success(f"ส่งข้อมูลสำเร็จ! รหัสรับแจ้งคือ: {rid}")
+                    st.info("⚠️ กรุณาจดจำเลข 4 ตัวท้ายของรหัสรับแจ้ง เพื่อใช้ตรวจสอบสถานะ")
+                else: st.error("กรุณากรอกข้อมูลให้ครบ")
+
+    # Tab 2: ติดตามสถานะ (4 ตัวท้าย)
+    with tab2:
+        st.subheader("🔍 ตรวจสอบสถานะการดำเนินงาน")
+        st.markdown("กรอก **เลข 4 ตัวท้าย** ของรหัสรับแจ้ง (เช่น 5929) เพื่อตรวจสอบสถานะ")
         
-        if st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True):
-            if rep and loc and det:
-                rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                df_old = conn.read(ttl="1m")
-                new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
-                conn.update(data=pd.concat([df_old, new_data], ignore_index=True))
-                st.cache_data.clear()
-                st.success(f"ส่งข้อมูลสำเร็จ! รหัสรับแจ้งคือ: {rid}")
-            else: st.error("กรุณากรอกข้อมูลให้ครบ")
+        search_code = st.text_input("เลข 4 ตัวท้าย", max_chars=4, placeholder="ตัวอย่าง: 5929")
+        
+        if st.button("🔎 ค้นหา", use_container_width=True):
+            if len(search_code) == 4 and search_code.isdigit():
+                try:
+                    df = conn.read(ttl="1m")
+                    df = df.fillna("")
+                    df['Report_ID'] = df['Report_ID'].astype(str)
+                    
+                    # ค้นหาเลขที่ลงท้ายด้วย input
+                    match = df[df['Report_ID'].str.endswith(search_code)]
+                    
+                    if not match.empty:
+                        for idx, row in match.iterrows():
+                            # แสดงผลแบบการ์ดสวยงาม
+                            with st.container(border=True):
+                                st.markdown(f"#### 📌 เลขที่รับแจ้ง: {row['Report_ID']}")
+                                c1, c2 = st.columns(2)
+                                c1.write(f"**ประเภทเหตุ:** {row['Incident_Type']}")
+                                
+                                status = row['Status']
+                                color = "orange"
+                                if status == "ดำเนินการเรียบร้อย": color = "green"
+                                elif status == "อยู่ระหว่างการดำเนินการ": color = "blue"
+                                elif status == "ยกเลิก": color = "red"
+                                
+                                c2.markdown(f"**สถานะ:** <span style='color:{color};font-weight:bold'>{status}</span>", unsafe_allow_html=True)
+                                st.caption(f"อัปเดตล่าสุด: {row.get('Timestamp')}")
+                    else:
+                        st.warning(f"ไม่พบข้อมูลของเลขท้าย {search_code}")
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
+            else:
+                st.error("กรุณากรอกตัวเลขให้ครบ 4 หลัก")
 
     st.markdown("---")
     with st.expander("🔐 สำหรับเจ้าหน้าที่"):
