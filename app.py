@@ -227,7 +227,7 @@ def render_case_list(df_subset, list_type):
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน (คุณ{user['name']})</div>", unsafe_allow_html=True)
+    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None; st.rerun()
