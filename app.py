@@ -236,7 +236,7 @@ def render_case_list(df_subset, list_type):
 def officer_dashboard():
     user = st.session_state.current_user
     col_h1, col_h2 = st.columns([4, 1])
-    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบสืบสวนสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
+    with col_h1: st.markdown(f"<div class='main-header'>🏢 ระบบจัดการ คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h2: 
         if st.button("🔴 Logout", use_container_width=True):
             st.session_state.current_user = None
@@ -355,7 +355,7 @@ def officer_dashboard():
                     # Lock Logic
                     current_status = row.get('Status', 'รอดำเนินการ')
                     is_locked = False
-                    is_finished = (current_status == "ดำเนินการเรียบร้อย")
+                    is_finished = (current_status == "จัดการแล้ว")
                     
                     if not is_admin: is_locked = True
                     elif is_finished:
@@ -382,7 +382,7 @@ def officer_dashboard():
                     with f2:
                         v_tea = st.text_input("ครูผู้สอบสวน *", value=clean_val(row.get('Teacher_Investigator')), disabled=is_locked)
                         v_stu = st.text_input("ตำรวจนักเรียน *", value=clean_val(row.get('Student_Police_Investigator')), disabled=is_locked)
-                        opts = ["รอดำเนินการ", "กำลังดำเนินการ", "ดำเนินการเรียบร้อย", "ยกเลิก"]
+                        opts = ["รอดำเนินการ", "กำลังจัดการ", "จัดการแล้ว", "ยกเลิก"]
                         idx_stat = opts.index(current_status) if current_status in opts else 0
                         v_sta = st.selectbox("สถานะ", opts, index=idx_stat, disabled=is_locked)
                     
