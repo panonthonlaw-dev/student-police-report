@@ -1,7 +1,12 @@
 streamlit
-st-gsheets-connection
 pandas
-WeasyPrint
-Pillow
+gspread
+oauth2client
+requests
+pytz
 qrcode
-xlsxwriter
+plotly
+Pillow
+reportlab
+weasyprint
+streamlit-gsheets
