@@ -9,4 +9,4 @@ plotly
 Pillow
 reportlab
 weasyprint
-streamlit-gsheets
+st-gsheets-connection
