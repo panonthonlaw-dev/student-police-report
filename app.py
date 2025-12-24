@@ -15,7 +15,20 @@ import time  # <--- เพิ่มบรรทัดนี้แล้วคร
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
-
+# --- [ส่วนที่ 1] ฟังก์ชันคำนวณชื่อชีตตามปีการศึกษา (ตัดรอบเดือนพฤษภาคม) ---
+def get_target_sheet_name():
+    # ใช้วันที่ปัจจุบันตรวจสอบ
+    now = get_now_th()
+    year_th = now.year + 543
+    
+    # ถ้าเดือนปัจจุบัน < 5 (ม.ค. - เม.ย.) ให้ถือเป็นปีการศึกษาที่แล้ว
+    if now.month < 5:
+        ac_year = year_th - 1
+    else:
+        ac_year = year_th
+        
+    # ชื่อชีตต้องตรงกับที่ Admin สร้างไว้ เช่น Investigation_2568
+    return f"Investigation_{ac_year}"
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
@@ -651,20 +664,47 @@ def main_page():
                     st.warning("⚠️ กรุณากดยินยอม PDPA ก่อนส่งข้อมูล")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    # --- [SAFETY FIX] อ่านข้อมูลดิบ + ห้ามซ่อมคอลัมน์ ---
-                    df_old = conn.read(ttl="0") 
-                    # ----------------------------------------------------------------
-                    new_data = pd.DataFrame([{"Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), "Reporter": rep, "Incident_Type": typ, "Location": loc, "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, "Image_Data": process_image(img)}])
                     
-                    # เติมค่าว่างใน new_data ให้ครบตาม df_old (ป้องกัน concat แล้วคอลัมน์เบี้ยว)
-                    for c in df_old.columns:
-                        if c not in new_data.columns: new_data[c] = ""
-                    
-                    # รวมร่างและเติมค่าว่างทั้งหมด (แก้ API Error)
-                    combined_df = pd.concat([df_old, new_data], ignore_index=True)
-                    combined_df = combined_df.fillna("")
-                    
-                    conn.update(data=combined_df)
+                    # --- [ส่วนที่ 2 แก้ไข] บันทึกลงชีตตามปีการศึกษา ---
+                    try:
+                        # 1. คำนวณชื่อชีตเป้าหมาย (เช่น Investigation_2568)
+                        target_sheet = get_target_sheet_name()
+                        
+                        # 2. อ่านข้อมูลเดิมจากชีตนั้น
+                        df_old = conn.read(worksheet=target_sheet, ttl="0")
+                        
+                        # 3. เตรียมข้อมูลใหม่
+                        new_data = pd.DataFrame([{
+                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+                            "Reporter": rep, 
+                            "Incident_Type": typ, 
+                            "Location": loc, 
+                            "Details": det, 
+                            "Status": "รอดำเนินการ", 
+                            "Report_ID": rid, 
+                            "Image_Data": process_image(img)
+                        }])
+                        
+                        # 4. เติมคอลัมน์ให้ครบและรวมร่าง
+                        for c in df_old.columns:
+                            if c not in new_data.columns: new_data[c] = ""
+                        
+                        combined_df = pd.concat([df_old, new_data], ignore_index=True)
+                        combined_df = combined_df.fillna("")
+                        
+                        # 5. อัปเดตกลับไปที่ชีตเดิม (target_sheet)
+                        conn.update(worksheet=target_sheet, data=combined_df)
+                        st.cache_data.clear()
+                        
+                        st.session_state.last_submit_time = datetime.now()
+                        st.success(f"✅ ส่งข้อมูลสำเร็จ! (ปีการศึกษา {target_sheet.split('_')[1]})")
+                        st.success(f"รหัสรับแจ้งคือ: {rid}")
+                        st.info("⚠️ กรุณาจดจำเลข 4 ตัวท้ายของรหัสรับแจ้ง เพื่อใช้ตรวจสอบสถานะ")
+                        
+                    except Exception as e:
+                        st.error(f"เกิดข้อผิดพลาด: ไม่พบฐานข้อมูลปีการศึกษานี้ ({target_sheet}) กรุณาแจ้งครูผู้ดูแล")
+                        # st.error(e) # เปิดบรรทัดนี้ถ้าอยากดู error จริง
+                    # ----------------------------------------------------
                     st.cache_data.clear()
                     
                     st.session_state.last_submit_time = datetime.now()
