@@ -435,10 +435,18 @@ def officer_dashboard():
                 st.subheader("📊 สรุปสถิติ")
                 with st.expander("📥 Export ข้อมูล"):
                     if not df_display.empty:
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                            df_display.to_excel(writer, index=False, sheet_name='ReportData')
-                        st.download_button(label="ดาวน์โหลดไฟล์ Excel", data=buffer, file_name=f"Report_Export_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
+                        # --- [แก้ไข] ใช้ CSV แทน Excel (แก้ปัญหา No module xlsxwriter) ---
+                        # .to_csv(index=False).encode('utf-8-sig') ช่วยให้อ่านภาษาไทยใน Excel รู้เรื่อง
+                        csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
+                        
+                        st.download_button(
+                            label="📥 ดาวน์โหลดไฟล์ CSV (เปิดใน Excel ได้)",
+                            data=csv_data,
+                            file_name=f"Report_Export_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv",
+                            type="primary"
+                        )
+                        # -----------------------------------------------------------
                 
                 if not df_display.empty:
                     total_cases = len(df_display)
