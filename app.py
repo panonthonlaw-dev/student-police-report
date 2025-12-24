@@ -722,9 +722,13 @@ def main_page():
         if st.button("🔎 ค้นหา", use_container_width=True):
             if len(search_code) == 4 and search_code.isdigit():
                 try:
-                    # --- [SAFETY FIX] อ่านข้อมูลดิบ + ซ่อมเพื่อแสดงผลเท่านั้น ---
-                    df_raw = conn.read(ttl="0")
+                    # --- [ส่วนที่ 3 แก้ไข] ค้นหาจากชีตปีปัจจุบัน ---
+                    target_sheet = get_target_sheet_name()
+                    df_raw = conn.read(worksheet=target_sheet, ttl="0")
+                    # -------------------------------------------
+                    
                     df_display = safe_ensure_columns_for_view(df_raw.copy())
+                    # ... (โค้ดแสดงผลด้านล่างเหมือนเดิม ไม่ต้องแก้) ...
                     # ------------------------------------------------------------
                     df_display = df_display.fillna("")
                     df_display['Report_ID'] = df_display['Report_ID'].astype(str)
