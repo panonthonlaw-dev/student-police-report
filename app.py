@@ -362,10 +362,13 @@ def officer_dashboard():
             st.session_state.current_user = None; st.rerun()
 
     try:
-        # อ่านข้อมูลดิบ (ไม่ผ่านตัวซ่อม) เพื่อไม่ให้ข้อมูลเพี้ยนตอนบันทึก
-        df_raw = conn.read(ttl="0")
+        # ✅ [แก้ไข 1] ระบุชื่อชีตให้ชัดเจนตามปีการศึกษา
+        target_sheet = get_target_sheet_name()
         
-        # สร้างตัวแปรสำหรับแสดงผล (ผ่านตัวซ่อม เพื่อไม่ให้ error หน้าเว็บ)
+        # ✅ [แก้ไข 2] อ่านข้อมูลจากชีตที่ระบุเท่านั้น (ไม่ใช่อ่านชีตแรกสุด)
+        df_raw = conn.read(worksheet=target_sheet, ttl="0")
+        
+        # สร้างตัวแปรสำหรับแสดงผล
         df_display = safe_ensure_columns_for_view(df_raw.copy()) 
         df_display = df_display.fillna("")
         df_display['Report_ID'] = df_display['Report_ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -435,10 +438,7 @@ def officer_dashboard():
                 st.subheader("📊 สรุปสถิติ")
                 with st.expander("📥 Export ข้อมูล"):
                     if not df_display.empty:
-                        # --- [แก้ไข] ใช้ CSV แทน Excel (แก้ปัญหา No module xlsxwriter) ---
-                        # .to_csv(index=False).encode('utf-8-sig') ช่วยให้อ่านภาษาไทยใน Excel รู้เรื่อง
                         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
-                        
                         st.download_button(
                             label="📥 ดาวน์โหลดไฟล์ CSV (เปิดใน Excel ได้)",
                             data=csv_data,
@@ -446,7 +446,6 @@ def officer_dashboard():
                             mime="text/csv",
                             type="primary"
                         )
-                        # -----------------------------------------------------------
                 
                 if not df_display.empty:
                     total_cases = len(df_display)
@@ -505,13 +504,10 @@ def officer_dashboard():
             st.button("⬅️ กลับหน้ารายการ", on_click=back_to_list, use_container_width=True)
             
             sid = str(st.session_state.selected_case_id).strip()
-            # ใช้ df_display ค้นหาเพื่อไม่ให้ error
             sel = df_display[df_display['Report_ID'] == sid]
             
             if not sel.empty:
-                # แต่เวลาบันทึก เราต้องหา index จริงจาก df_raw (ข้อมูลดิบ)
-                # เพื่อให้บันทึกถูกแถว
-                idx = sel.index[0] # index ใน display กับ raw ตรงกันเพราะ copy มา
+                idx = sel.index[0] 
                 row = sel.iloc[0]
                 
                 current_status = clean_val(row.get('Status'))
@@ -561,7 +557,7 @@ def officer_dashboard():
                             new_log = f"[{get_now_th().strftime('%d/%m/%Y %H:%M')}] แก้ไขโดย {user['name']}"
                             old_log = clean_val(row.get('Audit_Log'))
                             
-                            # อัปเดตลง df_raw (ข้อมูลดิบ) ไม่ใช่ df_display
+                            # Update to df_raw
                             df_raw.at[idx, 'Victim'] = v_vic
                             df_raw.at[idx, 'Accused'] = v_acc
                             df_raw.at[idx, 'Witness'] = v_wit
@@ -572,9 +568,11 @@ def officer_dashboard():
                             df_raw.at[idx, 'Evidence_Image'] = final_img
                             df_raw.at[idx, 'Audit_Log'] = f"{old_log}\n{new_log}" if old_log else new_log
                             
-                            # เติม fillna กันตายก่อนส่งกลับ
                             df_raw = df_raw.fillna("")
-                            conn.update(data=df_raw)
+                            
+                            # ✅ [แก้ไข 3] บันทึกกลับไปยังชีตที่ถูกต้อง (ไม่ทับมั่ว)
+                            conn.update(worksheet=target_sheet, data=df_raw)
+                            
                             st.cache_data.clear()
                             st.success("บันทึกเรียบร้อย!"); time.sleep(1); st.rerun()
 
