@@ -331,7 +331,7 @@ def main_page():
     with tab1:
         st.markdown("### 📍 ระบุตำแหน่งพิกัด")
         
-        # 1. นิยามตัวแปร JavaScript (ต้องมีบรรทัดนี้ก่อนเรียกใช้)
+        # 1. นิยามตัวแปร JavaScript
         geo_html = """
         <fieldset style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background: #f9f9f9;">
             <button onclick="getLocation()" type="button" style="width:100%; background-color:#1E3A8A; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">
@@ -372,9 +372,9 @@ def main_page():
         # 2. แสดงผลปุ่มดึงพิกัด
         components.html(geo_html, height=120)
 
-        # 3. ตัวรับค่าพิกัด (ซ่อนไว้ด้วย CSS)
-        u_lat = st.text_input("lat_val", key="gps_lat", label_visibility="hidden")
-        u_lon = st.text_input("lon_val", key="gps_lon", label_visibility="hidden")
+       # 3. ตัวรับค่าพิกัด (ซ่อนไว้ แต่ต้องมีเพื่อให้ JS ส่งค่ากลับมาได้)
+        st.text_input("lat_val", key="gps_lat", label_visibility="hidden")
+        st.text_input("lon_val", key="gps_lon", label_visibility="hidden")
 
         st.markdown("""
             <style>
@@ -399,7 +399,9 @@ def main_page():
             submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
             
             if submitted:
-                # ส่วนตรวจสอบ Spam และบันทึกข้อมูล (ใช้ u_lat และ u_lon ที่แอบไว้ข้างบน)
+                # ✅ จุดที่แก้ไข: ดึงค่าจาก Session State โดยตรง เพื่อความชัวร์ 100%
+                current_lat = st.session_state.get("gps_lat", "")
+                current_lon = st.session_state.get("gps_lon", "")
                 if 'last_submit_time' in st.session_state:
                     if (datetime.now() - st.session_state.last_submit_time).total_seconds() < 30:
                         st.warning("⚠️ กรุณารอ 30 วินาทีก่อนแจ้งเหตุครั้งถัดไป")
@@ -431,8 +433,8 @@ def main_page():
                             "Report_ID": rid, 
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": u_lat,
-                            "lon": u_lon
+                            "lat": current_lat, # ✅ ใส่ตัวแปรที่ดึงจาก session_state
+                            "lon": current_lon  # ✅ ใส่ตัวแปรที่ดึงจาก session_state
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
