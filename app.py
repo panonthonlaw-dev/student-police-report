@@ -449,9 +449,9 @@ def main_page():
                                 "Status": "รอดำเนินการ", 
                                 "Report_ID": rid, 
                                 "Image_Data": img_p, 
-                                "Audit_Log": f"Created: {get_now_th()}"
-                                "lat": u_lat,  # <--- วางบรรทัดนี้ต่อจาก Audit_Log
-                                "lon": u_lon   # <--- วางบรรทัดนี้ต่อท้ายสุด (ระวังต้องมี ] ปิดท้าย)
+                                "Audit_Log": f"Created: {get_now_th()}", # <--- ✅ เติมคอมม่าตรงนี้!
+                                "lat": u_lat,  # บรรทัดนี้จะไม่ error แล้ว
+                                "lon": u_lon   # อย่าลืมคอมม่าปิดท้ายบรรทัดนี้ด้วยถ้ามีบรรทัดต่อ
                             }])
 
                             # C. เติมคอลัมน์ให้ครบ (กัน Error หาก Sheet มีคอลัมน์ไม่เท่ากัน)
