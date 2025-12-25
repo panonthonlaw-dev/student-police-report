@@ -31,7 +31,59 @@ def get_target_sheet_name():
     return f"Investigation_{ac_year}"
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
+st.markdown("""
+<style>
+    /* 1. ซ่อน Menu Bar ด้านขวาบน (ปุ่ม 3 จุด) และ Header ด้านบนสุด */
+    [data-testid="stHeader"] {
+        display: none;
+    }
+    
+    /* 2. ซ่อน Toolbar (เผื่อในบางเวอร์ชั่น) */
+    [data-testid="stToolbar"] {
+        visibility: hidden;
+        height: 0%;
+    }
 
+    /* 3. ซ่อน Footer (Made with Streamlit) */
+    footer {
+        visibility: hidden;
+        height: 0%;
+    }
+
+    /* 4. ปรับพื้นที่ด้านบนให้ชิดขอบ (เพราะ Header หายไปแล้วจะเหลือที่ว่าง) */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+
+    /* 5. ซ่อนปุ่ม Deploy (เผื่อหลุดมา) */
+    .stDeployButton {
+        display: none;
+    }
+    
+    /* 6. ของเดิมที่คุณมี (ซ่อน Sidebar และอื่นๆ) */
+    [data-testid="stSidebar"] {display: none;}
+    [data-testid="collapsedControl"] {display: none;}
+    
+    /* 7. ปรับแต่ง Card และปิด Animation เดิม */
+    .metric-card { 
+        background: white; 
+        padding: 10px; 
+        border-radius: 8px; 
+        border: 1px solid #d1d5db; 
+        text-align: center; 
+        box-shadow: none !important; 
+    }
+    .metric-value { font-size: 2.2rem; font-weight: 800; color: #1e293b; } 
+    .metric-label { font-size: 0.9rem; color: #64748b; }
+    img { opacity: 1 !important; image-rendering: -webkit-optimize-contrast; }
+    
+    /* แก้ไข Scroll behavior */
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 # --- ค้นหาไฟล์ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "THSarabunNew.ttf")
