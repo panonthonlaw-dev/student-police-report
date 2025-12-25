@@ -371,9 +371,20 @@ def main_page():
         # 2. ✅ สั่งแสดงผล (บรรทัดนี้สำคัญที่สุด ปุ่มจะขึ้นเพราะบรรทัดนี้)
         components.html(geo_html, height=120) 
 
-        # 3. สร้างช่องรับค่าที่ส่งมาจาก JS (เอาไว้นอก Form เพื่อให้ค่าอัปเดตได้)
-        u_lat = st.text_input("lat_val", key="gps_lat", label_visibility="collapsed")
-        u_lon = st.text_input("lon_val", key="gps_lon", label_visibility="collapsed")
+        # สร้าง container ว่างๆ เพื่อแอบค่าไว้ไม่ให้มีแถบสีเทาโผล่มา
+with st.container():
+    u_lat = st.text_input("lat_val", key="gps_lat", label_visibility="hidden")
+    u_lon = st.text_input("lon_val", key="gps_lon", label_visibility="hidden")
+
+# เพิ่ม CSS เล็กน้อยเพื่อบังคับปิดพื้นที่ว่างของ 2 ช่องนี้
+st.markdown("""
+    <style>
+        div[data-testid="stTextInput"]:has(input[aria-label="lat_val"]),
+        div[data-testid="stTextInput"]:has(input[aria-label="lon_val"]) {
+            display: none;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
         # 4. เริ่มต้น Form เดิมของคุณ
         with st.form("report_form", clear_on_submit=True):
