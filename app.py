@@ -90,8 +90,21 @@ LOGO_BASE64 = get_base64_image(LOGO_PATH) if LOGO_PATH else ""
 LOGO_MIME = "image/png"
 
 def sanitize_input(text):
-    if text: return str(text).replace("=", "").replace('"', "").replace("'", "").strip()
-    return text
+    if not text:
+        return ""
+    
+    text_str = str(text)
+    
+    # 1. ป้องกัน Formula Injection (Google Sheets / Excel)
+    # ถ้าขึ้นต้นด้วย = + - @ ให้เติม ' นำหน้า เพื่อบังคับเป็น Text
+    if text_str.startswith(("=", "+", "-", "@")):
+        text_str = "'" + text_str
+        
+    # 2. ป้องกัน XSS (แปลง < > เป็น html entities)
+    # เพื่อความปลอดภัยเมื่อนำไปแสดงผลบนเว็บ
+    safe_text = html.escape(text_str)
+    
+    return safe_text.strip()
 
 def safe_ensure_columns_for_view(df):
     required_cols = ['Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 'Accused', 'Witness', 'Teacher_Investigator', 'Student_Police_Investigator', 'Statement', 'Evidence_Image']
