@@ -12,6 +12,7 @@ import glob
 import math
 import mimetypes
 import time
+import html
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
@@ -91,8 +92,7 @@ LOGO_MIME = "image/png"
 
 def sanitize_input(text):
     if not text:
-        return ""
-    
+        return ""    
     text_str = str(text)
     
     # 1. ป้องกัน Formula Injection (Google Sheets / Excel)
