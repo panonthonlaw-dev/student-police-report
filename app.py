@@ -80,20 +80,35 @@ def sanitize_input(text):
         return str(text).replace("=", "").replace('"', "").replace("'", "").strip()
     return text
 
+# --- [วางทับฟังก์ชัน process_image ของเดิม] ---
 def process_image(img_file):
     if img_file is None: return ""
     try:
         img = Image.open(img_file)
+        # แปลงโหมดสีให้เป็น RGB เสมอ
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
         
-        img.thumbnail((800, 800))
+        # 1. ลดขนาดภาพลง (จากเดิม 800 เหลือ 450-500 ก็พออ่านรู้เรื่องใน Report)
+        img.thumbnail((450, 450)) 
+        
         buffer = io.BytesIO()
         
-        img.save(buffer, format="JPEG", quality=65, optimize=True)
-        return base64.b64encode(buffer.getvalue()).decode()
-    except: return ""
-
+        # 2. ลดคุณภาพไฟล์ JPEG ลง (จาก 65 เหลือ 40-50)
+        # optimize=True ช่วยบีบอัดเพิ่มเติมโดยไม่เสียคุณภาพมาก
+        img.save(buffer, format="JPEG", quality=40, optimize=True)
+        
+        # 3. แปลงเป็น Base64
+        base64_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        # 4. [Safety Guard] เช็คครั้งสุดท้าย ถ้ายังเกิน 50,000 ให้ตัดทิ้งเพื่อกันระบบล่ม
+        if len(base64_str) > 49500:
+            st.warning("⚠️ รูปภาพมีรายละเอียดสูงเกินไป ระบบจำเป็นต้องตัดรูปออกเพื่อบันทึกข้อมูลส่วนอื่น")
+            return "" # ยอมไม่บันทึกรูป ดีกว่าบันทึกไม่ได้ทั้งแถว
+            
+        return base64_str
+    except: 
+        return ""
 # --- [SAFETY FIX] ฟังก์ชันนี้ใช้ "เฉพาะตอนแสดงผล" เท่านั้น ห้ามใช้ตอนบันทึก ---
 def safe_ensure_columns_for_view(df):
     required_cols = [
