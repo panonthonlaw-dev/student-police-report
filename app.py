@@ -278,7 +278,7 @@ def officer_dashboard():
 
     except Exception as e: st.error(f"Error: {e}")
 
-# --- Pop-up Dialog ---
+# --- [แก้ฟังก์ชันนี้ใหม่] ---
 @st.dialog("✅ บันทึกข้อมูลสำเร็จ")
 def show_success_popup(rid):
     st.markdown(f"""
@@ -291,10 +291,13 @@ def show_success_popup(rid):
             </div>
         </div>
     """, unsafe_allow_html=True)
-    st.warning("⚠️ หน้าต่างนี้จะปิดอัตโนมัติใน 1 นาที")
-    if st.button("ปิดหน้าต่าง", type="primary", use_container_width=True):
-        st.session_state.show_popup = False; st.rerun()
-    time.sleep(60); st.session_state.show_popup = False; st.rerun()
+    
+    st.info("ℹ️ ท่านสามารถกดปุ่ม 'ปิดหน้าต่าง' เพื่อกลับสู่หน้าหลัก")
+
+    # ปุ่มปิดต้องทำงานทันที ห้ามมี time.sleep ขวาง
+    if st.button("ปิดหน้าต่าง (Close)", type="primary", use_container_width=True):
+        st.session_state.show_popup = False
+        st.rerun()
 
 # --- 5. Main Page (นักเรียน) ---
 def main_page():
