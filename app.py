@@ -107,7 +107,8 @@ def sanitize_input(text):
     return safe_text.strip()
 
 def safe_ensure_columns_for_view(df):
-    required_cols = ['Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 'Accused', 'Witness', 'Teacher_Investigator', 'Student_Police_Investigator', 'Statement', 'Evidence_Image']
+    required_cols = ['Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 'Accused', 'Witness', 'Teacher_Investigator', 'Student_Police_Investigator', 'Statement', 'Evidence_Image', 
+        'lat', 'lon']
     if df is None or df.empty: return pd.DataFrame(columns=required_cols)
     for col in required_cols:
         if col not in df.columns: df[col] = ""
