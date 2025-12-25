@@ -328,7 +328,67 @@ def main_page():
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
     
     with tab1:
+        st.markdown("### 📍 ระบุตำแหน่งพิกัด")
+        
+        # ส่วนประกอบ JavaScript สำหรับดึงพิกัดจริงจากเบราว์เซอร์มือถือ
+        geo_html = """
+        <fieldset style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background: #f9f9f9;">
+            <legend style="font-weight: bold; color: #1E3A8A;">ปักหมุดที่เกิดเหตุ</legend>
+            <button onclick="getLocation()" style="width:100%; background-color:#1E3A8A; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">
+                🛰️ คลิกเพื่อดึงพิกัดปัจจุบัน (GPS)
+            </button>
+            <p id="status" style="font-size:12px; margin-top:5px; color:#666;">*โปรดอนุญาตให้เข้าถึงตำแหน่งเมื่อมีการแจ้งเตือน</p>
+            <input type="hidden" id="lat" name="lat">
+            <input type="hidden" id="lon" name="lon">
+        </fieldset>
+
+        <script>
+        function getLocation() {
+            var status = document.getElementById("status");
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+                status.innerHTML = "⌛ กำลังค้นหาตำแหน่ง...";
+            } else { 
+                status.innerHTML = "เบราว์เซอร์ไม่รองรับ GPS";
+            }
+        }
+
+        function showPosition(position) {
+            var lat = position.coords.latitude;
+            var lon = position.coords.longitude;
+            // ส่งค่าไปเก็บในระบบ Streamlit (แอบใช้ช่องทาง input ที่มองไม่เห็น)
+            window.parent.postMessage({
+                type: 'streamlit:set_widget_value',
+                key: 'gps_lat',
+                value: lat.toString()
+            }, '*');
+            window.parent.postMessage({
+                type: 'streamlit:set_widget_value',
+                key: 'gps_lon',
+                value: lon.toString()
+            }, '*');
+            document.getElementById("status").innerHTML = "✅ ดึงพิกัดสำเร็จ: " + lat.toFixed(5) + ", " + lon.toFixed(5);
+        }
+
+        function showError(error) {
+            var status = document.getElementById("status");
+            switch(error.code) {
+                case error.PERMISSION_DENIED: status.innerHTML = "❌ คุณปฏิเสธการเข้าถึง GPS"; break;
+                case error.POSITION_UNAVAILABLE: status.innerHTML = "❌ ไม่พบข้อมูลตำแหน่ง"; break;
+                case error.TIMEOUT: status.innerHTML = "❌ ดึงพิกัดล่าช้าเกินเวลา"; break;
+                default: status.innerHTML = "❌ เกิดข้อผิดพลาด"; break;
+            }
+        }
+        </script>
+        """
+        st.components.v1.html(geo_html, height=120)
+
+        # ช่องรับค่าจาก JS (ซ่อนไว้ใช้ดึงข้อมูลลง Sheet เท่านั้น)
+        u_lat = st.text_input("lat_val", key="gps_lat", label_visibility="collapsed")
+        u_lon = st.text_input("lon_val", key="gps_lon", label_visibility="collapsed")
+
         with st.form("report_form", clear_on_submit=True):
+            # ... ช่องกรอกชื่อผู้แจ้งเดิมที่มีอยู่แล้ว ...
             # ✅ แก้ไข 1: เพิ่ม max_chars=100 ที่ช่องชื่อผู้แจ้ง
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
             
@@ -400,6 +460,8 @@ def main_page():
                                 "Report_ID": rid, 
                                 "Image_Data": img_p, 
                                 "Audit_Log": f"Created: {get_now_th()}"
+                                "lat": u_lat,  # <--- วางบรรทัดนี้ต่อจาก Audit_Log
+                                "lon": u_lon   # <--- วางบรรทัดนี้ต่อท้ายสุด (ระวังต้องมี ] ปิดท้าย)
                             }])
 
                             # C. เติมคอลัมน์ให้ครบ (กัน Error หาก Sheet มีคอลัมน์ไม่เท่ากัน)
