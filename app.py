@@ -330,47 +330,46 @@ def main_page():
     with tab1:
         st.markdown("### 📍 ระบุตำแหน่งพิกัด")
         
-        # 1. กำหนดค่าตัวแปร geo_html (ต้องอยู่ก่อนบรรทัดแสดงผล)
+        # 1. นิยามตัวแปร JavaScript (ต้องมีบรรทัดนี้ก่อนเรียกใช้)
         geo_html = """
         <fieldset style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background: #f9f9f9;">
             <button onclick="getLocation()" type="button" style="width:100%; background-color:#1E3A8A; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">
                 🛰️ คลิกเพื่อดึงพิกัดปัจจุบัน (GPS)
             </button>
-            <p id="status" style="font-size:12px; margin-top:5px; color:#666;">*กรุณากดปุ่มก่อนกรอกข้อมูลด้านล่าง</p>
+            <p id="status" style="font-size:12px; margin-top:5px; color:#666;">*กรุณากดปุ่มเพื่อระบุพิกัดที่เกิดเหตุ</p>
         </fieldset>
-
         <script>
-        function getLocation() {
-            var status = document.getElementById("status");
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(showPosition, showError);
-                status.innerHTML = "⌛ กำลังค้นหาตำแหน่ง...";
-            } else { status.innerHTML = "เบราว์เซอร์ไม่รองรับ GPS"; }
-        }
-        function showPosition(position) {
-            var lat = position.coords.latitude;
-            var lon = position.coords.longitude;
-            window.parent.postMessage({
-                type: 'streamlit:set_widget_value',
-                key: 'gps_lat',
-                value: lat.toString()
-            }, '*');
-            window.parent.postMessage({
-                type: 'streamlit:set_widget_value',
-                key: 'gps_lon',
-                value: lon.toString()
-            }, '*');
-            document.getElementById("status").innerHTML = "✅ ดึงพิกัดสำเร็จ";
-        }
-        function showError(error) {
-            var status = document.getElementById("status");
-            status.innerHTML = "❌ ไม่สามารถดึงพิกัดได้ (กรุณาเปิด GPS)";
-        }
+            function getLocation() {
+                var status = document.getElementById("status");
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(showPosition, showError);
+                    status.innerHTML = "⌛ กำลังค้นหาตำแหน่ง...";
+                } else { status.innerHTML = "เบราว์เซอร์ไม่รองรับ GPS"; }
+            }
+            function showPosition(position) {
+                var lat = position.coords.latitude;
+                var lon = position.coords.longitude;
+                window.parent.postMessage({
+                    type: 'streamlit:set_widget_value',
+                    key: 'gps_lat',
+                    value: lat.toString()
+                }, '*');
+                window.parent.postMessage({
+                    type: 'streamlit:set_widget_value',
+                    key: 'gps_lon',
+                    value: lon.toString()
+                }, '*');
+                document.getElementById("status").innerHTML = "✅ ดึงพิกัดสำเร็จ";
+            }
+            function showError(error) {
+                var status = document.getElementById("status");
+                status.innerHTML = "❌ ไม่สามารถดึงพิกัดได้ (กรุณาเปิด GPS)";
+            }
         </script>
         """
 
         # 2. แสดงผลปุ่มดึงพิกัด
-        st.components.v1.html(geo_html, height=120)
+        components.html(geo_html, height=120)
 
         # 3. ตัวรับค่าพิกัด (ซ่อนไว้ด้วย CSS)
         u_lat = st.text_input("lat_val", key="gps_lat", label_visibility="hidden")
@@ -385,13 +384,11 @@ def main_page():
             </style>
         """, unsafe_allow_html=True)
 
-        # 4. เข้าสู่ฟอร์มแจ้งเหตุ (ระวังย่อหน้าบรรทัดนี้ให้ตรงกับ st.markdown ด้านบน)
+        # 4. เข้าสู่ฟอร์มแจ้งเหตุ
         with st.form("report_form", clear_on_submit=True):
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
-            
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มผิดกฎหมาย", "พกพาอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "บูลลี่/ข่มขู่/ด่าทอบนโลกออนไลน์", "ล่วงละเมิด/คุกคามทางเพศ", "ความรุนแรงในครอบครัว", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            
             det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ระบุรายละเอียด...", max_chars=1000))
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
@@ -401,102 +398,51 @@ def main_page():
             submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
             
             if submitted:
-                
-                # 1. ตรวจสอบการ Spam (ป้องกันกดรัวๆ)
+                # ส่วนตรวจสอบ Spam และบันทึกข้อมูล (ใช้ u_lat และ u_lon ที่แอบไว้ข้างบน)
                 if 'last_submit_time' in st.session_state:
                     if (datetime.now() - st.session_state.last_submit_time).total_seconds() < 30:
                         st.warning("⚠️ กรุณารอ 30 วินาทีก่อนแจ้งเหตุครั้งถัดไป")
                         st.stop()
 
-                # 2. ตรวจสอบความถูกต้องข้อมูลเบื้องต้น
                 if len(det) < 10: 
-                    st.error("⚠️ รายละเอียดสั้นเกินไป (ต้องมากกว่า 10 ตัวอักษร)")
+                    st.error("⚠️ รายละเอียดสั้นเกินไป")
                 elif not pdpa_check: 
-                    st.warning("⚠️ กรุณาติ๊กยืนยันการยินยอมข้อมูล (PDPA)")
+                    st.warning("⚠️ กรุณายืนยัน PDPA")
                 elif rep and loc and det:
-                    # สร้างรหัส Report ID
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    
-                    # เตรียมข้อมูลใหม่ (รูปภาพ)
                     img_p = process_image(img) if img else ""
                     
-                    # --- 🔥 โซนป้องกันข้อมูลเขียนทับ (Critical Section) ---
-                    max_retries = 5  # พยายามบันทึก 5 ครั้งถ้าชนกัน
-                    success = False
-                    
                     status_placeholder = st.empty()
-                    status_placeholder.info("⏳ กำลังเชื่อมต่อฐานข้อมูล... กรุณาอย่าปิดหน้าต่าง")
+                    status_placeholder.info("⏳ กำลังบันทึกข้อมูล...")
 
-                    for attempt in range(max_retries):
-                        try:
-                            target_sheet = get_target_sheet_name()
-                            
-                            # A. อ่านข้อมูลล่าสุดเดี๋ยวนั้นเลย (ttl=0 คือห้ามใช้ Cache เก่าเด็ดขาด)
-                            # นี่คือหัวใจสำคัญ: ต้องอ่านก่อนเขียนเสี้ยววินาที
-                            df_current = conn.read(worksheet=target_sheet, ttl=0)
-                            
-                            # ถ้าอ่านมาแล้วเป็น None หรือ Error ให้ข้ามรอบนี้ไป
-                            if df_current is None:
-                                time.sleep(random.uniform(1, 2)) # รอสักพักแล้วลองใหม่
-                                continue
+                    # บันทึกลง Sheet
+                    try:
+                        target_sheet = get_target_sheet_name()
+                        df_current = conn.read(worksheet=target_sheet, ttl=0)
+                        
+                        new_row = pd.DataFrame([{
+                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+                            "Reporter": rep, 
+                            "Incident_Type": typ, 
+                            "Location": loc, 
+                            "Details": det, 
+                            "Status": "รอดำเนินการ", 
+                            "Report_ID": rid, 
+                            "Image_Data": img_p, 
+                            "Audit_Log": f"Created: {get_now_th()}",
+                            "lat": u_lat,
+                            "lon": u_lon
+                        }])
 
-                            # B. เตรียมแถวใหม่
-                            new_row = pd.DataFrame([{
-                                "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
-                                "Reporter": rep, 
-                                "Incident_Type": typ, 
-                                "Location": loc, 
-                                "Details": det, 
-                                "Status": "รอดำเนินการ", 
-                                "Report_ID": rid, 
-                                "Image_Data": img_p, 
-                                "Audit_Log": f"Created: {get_now_th()}", # <--- ✅ เติมคอมม่าตรงนี้!
-                                "lat": u_lat,  # บรรทัดนี้จะไม่ error แล้ว
-                                "lon": u_lon   # อย่าลืมคอมม่าปิดท้ายบรรทัดนี้ด้วยถ้ามีบรรทัดต่อ
-                            }])
-
-                            # C. เติมคอลัมน์ให้ครบ (กัน Error หาก Sheet มีคอลัมน์ไม่เท่ากัน)
-                            for col in df_current.columns:
-                                if col not in new_row.columns: new_row[col] = ""
-                            
-                            # D. รวมร่าง (ข้อมูลล่าสุดจาก Sheet + แถวใหม่)
-                            # ใช้ ignore_index=True เพื่อเรียงบรรทัดใหม่
-                            combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
-
-                            # E. ตรวจสอบความปลอดภัยก่อนเขียน (Sanity Check)
-                            # ข้อมูลใหม่ต้องมากกว่าข้อมูลเก่า 1 แถวเสมอ ถ้าไม่ใช่ แสดงว่ามีอะไรผิดพลาด
-                            if len(combined_df) < len(df_current) + 1:
-                                raise ValueError("Data integrity check failed")
-
-                            # F. บันทึกกลับลง Google Sheet
-                            conn.update(worksheet=target_sheet, data=combined_df)
-                            
-                            # ถ้ามาถึงบรรทัดนี้แสดงว่าสำเร็จ
-                            success = True
-                            break  # ออกจาก Loop ทันที
-
-                        except Exception as e:
-                            # ถ้าชนกัน (เช่น Error Write timeout) ให้รอแบบสุ่มเวลา (Backoff) แล้วลองใหม่
-                            # การสุ่มเวลาช่วยลดโอกาสชนกันซ้ำ
-                            wait_time = random.uniform(0.5, 2.0)
-                            time.sleep(wait_time)
-                            continue
-                    
-                    # --- จบโซนป้องกัน ---
-
-                    if success:
-                        status_placeholder.empty()
-                        # เคลียร์ Cache เพื่อให้หน้า Dashboard เห็นข้อมูลใหม่ทันที
-                        st.cache_data.clear()
+                        combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
+                        conn.update(worksheet=target_sheet, data=combined_df)
+                        
                         st.session_state.last_submit_time = datetime.now()
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
                         st.rerun()
-                    else:
-                        status_placeholder.error("🚨 ระบบไม่สามารถบันทึกข้อมูลได้ในขณะนี้ (มีการใช้งานหนาแน่น) กรุณากดส่งใหม่อีกครั้ง")
-                
-                else:
-                    st.error("⚠️ กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
         code = st.text_input("เลข 4 ตัวท้าย", max_chars=4)
