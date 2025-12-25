@@ -334,61 +334,99 @@ def main_page():
             submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
             
             if submitted:
-                # Validation Logic
+                # 1. ตรวจสอบการ Spam (ป้องกันกดรัวๆ)
                 if 'last_submit_time' in st.session_state:
-                    if (datetime.now() - st.session_state.last_submit_time).total_seconds() < 60:
-                        st.error("⚠️ กรุณารอ 1 นาที"); st.stop()
+                    if (datetime.now() - st.session_state.last_submit_time).total_seconds() < 30:
+                        st.warning("⚠️ กรุณารอ 30 วินาทีก่อนแจ้งเหตุครั้งถัดไป")
+                        st.stop()
 
-                if len(det) < 10: st.error("⚠️ รายละเอียดสั้นเกินไป")
-                elif not pdpa_check: st.warning("⚠️ กรุณายินยอม PDPA")
+                # 2. ตรวจสอบความถูกต้องข้อมูลเบื้องต้น
+                if len(det) < 10: 
+                    st.error("⚠️ รายละเอียดสั้นเกินไป (ต้องมากกว่า 10 ตัวอักษร)")
+                elif not pdpa_check: 
+                    st.warning("⚠️ กรุณาติ๊กยืนยันการยินยอมข้อมูล (PDPA)")
                 elif rep and loc and det:
+                    # สร้างรหัส Report ID
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     
-                    # --- [ระบบป้องกันข้อมูลหาย 100%] ---
-                    try:
-                        target_sheet = get_target_sheet_name()
-                        df_old = None
-                        
-                        # Retry Read
-                        for _ in range(3):
-                            try:
-                                temp = conn.read(worksheet=target_sheet, ttl=0)
-                                if temp is not None: df_old = temp; break
-                            except: time.sleep(1)
-                        
-                        # Safety Guards
-                        if df_old is None: st.error("🚨 เชื่อมต่อฐานข้อมูลไม่ได้"); st.stop()
-                        if 'Report_ID' not in df_old.columns and not df_old.empty: st.error("🚨 โครงสร้างข้อมูลผิดพลาด"); st.stop()
+                    # เตรียมข้อมูลใหม่ (รูปภาพ)
+                    img_p = process_image(img) if img else ""
+                    
+                    # --- 🔥 โซนป้องกันข้อมูลเขียนทับ (Critical Section) ---
+                    max_retries = 5  # พยายามบันทึก 5 ครั้งถ้าชนกัน
+                    success = False
+                    
+                    status_placeholder = st.empty()
+                    status_placeholder.info("⏳ กำลังเชื่อมต่อฐานข้อมูล... กรุณาอย่าปิดหน้าต่าง")
 
-                        # Process Data
-                        img_p = process_image(img) if img else ""
-                        new_data = pd.DataFrame([{
-                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
-                            "Reporter": rep, "Incident_Type": typ, "Location": loc, 
-                            "Details": det, "Status": "รอดำเนินการ", "Report_ID": rid, 
-                            "Image_Data": img_p, "Audit_Log": f"Created: {get_now_th()}"
-                        }])
-                        
-                        # Merge & Check
-                        for c in df_old.columns: 
-                            if c not in new_data.columns: new_data[c] = ""
-                        combined = pd.concat([df_old, new_data], ignore_index=True).fillna("")
-                        
-                        if len(combined) <= len(df_old): st.error("🚨 ข้อมูลสูญหาย"); st.stop()
+                    for attempt in range(max_retries):
+                        try:
+                            target_sheet = get_target_sheet_name()
+                            
+                            # A. อ่านข้อมูลล่าสุดเดี๋ยวนั้นเลย (ttl=0 คือห้ามใช้ Cache เก่าเด็ดขาด)
+                            # นี่คือหัวใจสำคัญ: ต้องอ่านก่อนเขียนเสี้ยววินาที
+                            df_current = conn.read(worksheet=target_sheet, ttl=0)
+                            
+                            # ถ้าอ่านมาแล้วเป็น None หรือ Error ให้ข้ามรอบนี้ไป
+                            if df_current is None:
+                                time.sleep(random.uniform(1, 2)) # รอสักพักแล้วลองใหม่
+                                continue
 
-                        # Save
-                        conn.update(worksheet=target_sheet, data=combined)
+                            # B. เตรียมแถวใหม่
+                            new_row = pd.DataFrame([{
+                                "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+                                "Reporter": rep, 
+                                "Incident_Type": typ, 
+                                "Location": loc, 
+                                "Details": det, 
+                                "Status": "รอดำเนินการ", 
+                                "Report_ID": rid, 
+                                "Image_Data": img_p, 
+                                "Audit_Log": f"Created: {get_now_th()}"
+                            }])
+
+                            # C. เติมคอลัมน์ให้ครบ (กัน Error หาก Sheet มีคอลัมน์ไม่เท่ากัน)
+                            for col in df_current.columns:
+                                if col not in new_row.columns: new_row[col] = ""
+                            
+                            # D. รวมร่าง (ข้อมูลล่าสุดจาก Sheet + แถวใหม่)
+                            # ใช้ ignore_index=True เพื่อเรียงบรรทัดใหม่
+                            combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
+
+                            # E. ตรวจสอบความปลอดภัยก่อนเขียน (Sanity Check)
+                            # ข้อมูลใหม่ต้องมากกว่าข้อมูลเก่า 1 แถวเสมอ ถ้าไม่ใช่ แสดงว่ามีอะไรผิดพลาด
+                            if len(combined_df) < len(df_current) + 1:
+                                raise ValueError("Data integrity check failed")
+
+                            # F. บันทึกกลับลง Google Sheet
+                            conn.update(worksheet=target_sheet, data=combined_df)
+                            
+                            # ถ้ามาถึงบรรทัดนี้แสดงว่าสำเร็จ
+                            success = True
+                            break  # ออกจาก Loop ทันที
+
+                        except Exception as e:
+                            # ถ้าชนกัน (เช่น Error Write timeout) ให้รอแบบสุ่มเวลา (Backoff) แล้วลองใหม่
+                            # การสุ่มเวลาช่วยลดโอกาสชนกันซ้ำ
+                            wait_time = random.uniform(0.5, 2.0)
+                            time.sleep(wait_time)
+                            continue
+                    
+                    # --- จบโซนป้องกัน ---
+
+                    if success:
+                        status_placeholder.empty()
+                        # เคลียร์ Cache เพื่อให้หน้า Dashboard เห็นข้อมูลใหม่ทันที
                         st.cache_data.clear()
                         st.session_state.last_submit_time = datetime.now()
-                        
-                        # Trigger Popup
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
                         st.rerun()
-                        
-                    except Exception as e: st.error(f"❌ Error: {e}")
-                else: st.error("กรอกข้อมูลให้ครบ")
-
+                    else:
+                        status_placeholder.error("🚨 ระบบไม่สามารถบันทึกข้อมูลได้ในขณะนี้ (มีการใช้งานหนาแน่น) กรุณากดส่งใหม่อีกครั้ง")
+                
+                else:
+                    st.error("⚠️ กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน")
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
         code = st.text_input("เลข 4 ตัวท้าย", max_chars=4)
