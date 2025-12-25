@@ -694,7 +694,40 @@ def officer_dashboard():
                 st.error("รหัสผ่านไม่ถูกต้อง")
 
 # --- 5. หน้าหลักสำหรับนักเรียน ---
+# --- [ส่วนเสริม] ฟังก์ชัน Pop-up แจ้งเตือนความสำเร็จ ---
+@st.dialog("✅ บันทึกข้อมูลสำเร็จ")
+def show_success_popup(rid):
+    st.markdown(f"""
+        <div style="text-align: center;">
+            <div style="font-size: 50px;">🎉</div>
+            <h3>ระบบได้รับข้อมูลแล้ว</h3>
+            <p>กรุณาจดจำรหัสรับแจ้งนี้เพื่อใช้ตรวจสอบสถานะ</p>
+            <div style="background-color: #f0fdf4; padding: 15px; border-radius: 10px; border: 1px solid #bbf7d0; margin: 10px 0;">
+                <span style="font-size: 24px; font-weight: bold; color: #15803d; letter-spacing: 2px;">{rid}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.warning("⚠️ หน้าต่างนี้จะปิดอัตโนมัติใน 1 นาที")
+
+    if st.button("ปิดหน้าต่าง (Close)", type="primary", use_container_width=True):
+        st.session_state.show_popup = False
+        st.rerun()
+
+    # ระบบนับเวลาถอยหลัง 60 วินาทีแล้วปิดเอง
+    time.sleep(60)
+    st.session_state.show_popup = False
+    st.rerun()
 def main_page():
+    # --- [เพิ่มส่วนนี้บรรทัดแรก] เช็คสถานะเพื่อเปิด Pop-up ---
+    if "show_popup" not in st.session_state: st.session_state.show_popup = False
+    
+    if st.session_state.show_popup:
+        show_success_popup(st.session_state.get("popup_rid", ""))
+    # ----------------------------------------------------
+
+    if LOGO_PATH and os.path.exists(LOGO_PATH):
+        # ... (โค้ดเดิมของคุณต่อจากนี้) ...
     if LOGO_PATH and os.path.exists(LOGO_PATH):
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
@@ -812,9 +845,20 @@ def main_page():
                         
                         st.session_state.last_submit_time = datetime.now()
                         
-                        st.success(f"✅ ส่งข้อมูลสำเร็จ! (บันทึกลง: {target_sheet})")
-                        st.success(f"รหัสรับแจ้งคือ: {rid}")
-                        st.info("⚠️ กรุณาจดจำเลข 4 ตัวท้ายของรหัสรับแจ้ง เพื่อใช้ตรวจสอบสถานะ")
+                        # ... (ส่วนบันทึกข้อมูล conn.update เดิม) ...
+                        conn.update(worksheet=target_sheet, data=combined_df)
+                        st.cache_data.clear()
+                        
+                        st.session_state.last_submit_time = datetime.now()
+                        
+                        # ❌ ลบ st.success / st.info เดิมทิ้ง
+                        # ✅ ใส่ชุดนี้แทนครับ เพื่อเด้ง Pop-up
+                        st.session_state.popup_rid = rid
+                        st.session_state.show_popup = True
+                        st.rerun() # สั่งรีเฟรชหน้าจอเพื่อเปิด Pop-up ทันที
+                        
+                    except Exception as e:
+                        # ... (ส่วน Error เดิม) ...
                         
                     except Exception as e:
                         st.error(f"❌ เกิดข้อผิดพลาดร้ายแรง: {str(e)}")
