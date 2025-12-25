@@ -329,6 +329,33 @@ def main_page():
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุ", "🔍 ติดตามผล"])
     
     with tab1:
+        # ==========================================
+        # 🟢 ส่วนที่แก้ไข: ย้ายตัวรับค่า GPS มาไว้ "นอกฟอร์ม"
+        # ==========================================
+        
+        # 1. สร้างตัวรับค่า (Hidden Inputs) ไว้นอก Form เพื่อให้รับค่าจาก JS ได้ทันที
+        # ใช้ key เดิมคือ gps_lat, gps_lon
+        st.text_input("hidden_lat", key="gps_lat", label_visibility="collapsed")
+        st.text_input("hidden_lon", key="gps_lon", label_visibility="collapsed")
+
+        # 2. ซ่อนกล่องรับค่าด้วย CSS (วางไว้นอก Form เช่นกัน)
+        st.markdown("""
+        <style>
+            /* ซ่อนกล่องข้อความที่มี key เป็น gps_lat และ gps_lon */
+            div[data-testid="stTextInput"] input[aria-label="hidden_lat"],
+            div[data-testid="stTextInput"] input[aria-label="hidden_lon"] {
+                display: none;
+            }
+            div[data-testid="stTextInput"]:has(input[aria-label="hidden_lat"]),
+            div[data-testid="stTextInput"]:has(input[aria-label="hidden_lon"]) {
+                display: none !important;
+                height: 0px;
+                margin: 0px;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        # ==========================================
+
         with st.form("report_form", clear_on_submit=True):
             st.info("กรอกข้อมูลแจ้งเหตุ (ช่องที่มี * จำเป็นต้องกรอก)")
             
@@ -341,10 +368,9 @@ def main_page():
 
             st.markdown("---")
             
-            # --- 📍 ส่วน GPS (แบบเรียบง่ายที่สุด) ---
+            # --- 📍 ส่วนปุ่มกด GPS (ไว้ในฟอร์มได้ แต่สคริปต์จะส่งค่าไปตัวรับข้างบน) ---
             st.markdown("**ตำแหน่งปัจจุบัน (GPS)**")
             
-            # Script ดึงพิกัด (ทำงานเบื้องหลัง)
             geo_script = """
             <script>
                 function getLocation() {
@@ -356,13 +382,16 @@ def main_page():
                     } else { status.innerHTML = "❌ เครื่องนี้ไม่รองรับ GPS"; }
                 }
                 function success(pos) {
+                    // ส่งค่าไปที่ตัวแปร Streamlit (ซึ่งตอนนี้อยู่นอกฟอร์มแล้ว)
                     window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: pos.coords.latitude.toString()}, '*');
                     window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: pos.coords.longitude.toString()}, '*');
+                    
                     document.getElementById("gps_btn").innerHTML = "✅ แนบพิกัดเรียบร้อย";
-                    document.getElementById("gps_btn").style.backgroundColor = "#22c55e"; // สีเขียว
+                    document.getElementById("gps_btn").style.backgroundColor = "#22c55e"; 
+                    document.getElementById("gps_status").innerHTML = " (บันทึกอัตโนมัติ)";
                 }
                 function error(err) {
-                    document.getElementById("gps_btn").innerHTML = "⚠️ หาพิกัดไม่เจอ (ช่างมัน)";
+                    document.getElementById("gps_btn").innerHTML = "⚠️ หาพิกัดไม่เจอ";
                 }
             </script>
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -374,36 +403,12 @@ def main_page():
             """
             components.html(geo_script, height=50)
 
-            # --- ซ่อนกล่องรับค่า (Invisible Inputs) ---
-            # เราใช้เทคนิค CSS ซ่อน input ที่มี key เป็น gps_lat/lon ไม่ให้เด็กรำคาญตา
-            st.text_input("hidden_lat", key="gps_lat", label_visibility="collapsed")
-            st.text_input("hidden_lon", key="gps_lon", label_visibility="collapsed")
-            
-            st.markdown("""
-            <style>
-                /* ซ่อนกล่องข้อความที่มี aria-label ขึ้นต้นด้วย hidden_ */
-                div[data-testid="stTextInput"] input[aria-label="hidden_lat"],
-                div[data-testid="stTextInput"] input[aria-label="hidden_lon"] {
-                    display: none;
-                }
-                /* ซ่อนกรอบของ input ด้วย (เพื่อให้หายไปจริงๆ) */
-                div[data-testid="stTextInput"]:has(input[aria-label="hidden_lat"]),
-                div[data-testid="stTextInput"]:has(input[aria-label="hidden_lon"]) {
-                    display: none !important;
-                    height: 0px;
-                    margin: 0px;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-            # ----------------------------------------
-
             pdpa_check = st.checkbox("ยืนยันข้อมูลถูกต้องและยินยอมให้โรงเรียนตรวจสอบ")
             
-            # ปุ่มส่งใหญ่ๆ
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # ดึงค่าจาก Session State (ที่ถูกซ่อนไว้)
+                # ดึงค่าจาก Session State (ที่อยู่นอกฟอร์ม)
                 current_lat = st.session_state.get("gps_lat", "")
                 current_lon = st.session_state.get("gps_lon", "")
 
@@ -429,8 +434,8 @@ def main_page():
                             "Report_ID": rid, 
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": current_lat, # บันทึกค่าที่ซ่อนอยู่
-                            "lon": current_lon  # บันทึกค่าที่ซ่อนอยู่
+                            "lat": current_lat, # ✅ ค่านี้จะมาแล้วเพราะตัวรับอยู่นอกฟอร์ม
+                            "lon": current_lon
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
