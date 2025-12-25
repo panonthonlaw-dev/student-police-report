@@ -324,10 +324,10 @@ def main_page():
             
             # --- คำเตือนแจ้งเท็จ (คืนค่ากลับมาแล้ว) ---
             st.markdown("---")
-            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บรวบรวมข้อมูล...")
+            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บและใช้ข้อมูลเพื่อกระบวนการทำงานของโรงเรียนโพนทองพัฒนาวิทยา")
             st.markdown("""
                 <div style='background-color: #ffebee; padding: 10px; border-radius: 5px; border-left: 5px solid #ef5350;'>
-                    <span style='color: #c62828; font-weight: bold;'>⚠️ คำเตือน:</span> การแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามกฎหมายอาญา
+                    <span style='color: #c62828; font-weight: bold;'>⚠️ คำเตือน:</span> การแจ้งความเท็จเพื่อกลั่นแกล้งผู้อื่นมีความผิดตามกฎหมายอาญาและการรับแจ้งเหตุด่วนนี้ไม่ใช่การแจ้งความในทางกฎหมาย
                 </div>
             """, unsafe_allow_html=True)
             
