@@ -278,7 +278,7 @@ def officer_dashboard():
 
     except Exception as e: st.error(f"Error: {e}")
 
-# --- [ฟังก์ชัน Pop-up แบบแก้ไขแล้ว: ลบ time.sleep ออก] ---
+# --- [แก้ไขแล้ว: ตัด time.sleep ออกเพื่อให้ปุ่มแดงกดได้ทันที] ---
 @st.dialog("✅ บันทึกข้อมูลสำเร็จ")
 def show_success_popup(rid):
     st.markdown(f"""
@@ -294,7 +294,7 @@ def show_success_popup(rid):
     
     st.info("ℹ️ กดปุ่มด้านล่างเพื่อปิดหน้าต่าง")
 
-    # ปุ่มปิดทำงานทันที (เพราะไม่มี time.sleep ขวางแล้ว)
+    # ปุ่มปิดทำงานทันที (เพราะไม่มี time.sleep มาขวางแล้ว)
     if st.button("ปิดหน้าต่าง (Close)", type="primary", use_container_width=True):
         st.session_state.show_popup = False
         st.rerun()
