@@ -319,106 +319,102 @@ def main_page():
     if "show_popup" not in st.session_state: st.session_state.show_popup = False
     if st.session_state.show_popup: show_success_popup(st.session_state.get("popup_rid", ""))
 
-    # 2. Logo Logic (Fixed Indentation)
+    # 2. Logo & Header
     if LOGO_PATH and os.path.exists(LOGO_PATH):
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
     
-    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุโรงเรียนโพนทองฯ</h1>", unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["📝 แจ้งเหตุใหม่", "🔍 ติดตามสถานะ"])
+    tab1, tab2 = st.tabs(["📝 แจ้งเหตุ", "🔍 ติดตามผล"])
     
     with tab1:
-        st.markdown("### 📍 ระบุตำแหน่งพิกัด")
-        
-        # 1. นิยามตัวแปร JavaScript
-        geo_html = """
-        <fieldset style="border: 1px solid #ddd; padding: 10px; border-radius: 10px; background: #f9f9f9;">
-            <button onclick="getLocation()" type="button" style="width:100%; background-color:#1E3A8A; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">
-                🛰️ คลิกเพื่อดึงพิกัดปัจจุบัน (GPS)
-            </button>
-            <p id="status" style="font-size:12px; margin-top:5px; color:#666;">*กรุณากดปุ่มเพื่อระบุพิกัดที่เกิดเหตุ</p>
-        </fieldset>
-        <script>
-            function getLocation() {
-                var status = document.getElementById("status");
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(showPosition, showError);
-                    status.innerHTML = "⌛ กำลังค้นหาตำแหน่ง...";
-                } else { status.innerHTML = "เบราว์เซอร์ไม่รองรับ GPS"; }
-            }
-            function showPosition(position) {
-                var lat = position.coords.latitude;
-                var lon = position.coords.longitude;
-                window.parent.postMessage({
-                    type: 'streamlit:set_widget_value',
-                    key: 'gps_lat',
-                    value: lat.toString()
-                }, '*');
-                window.parent.postMessage({
-                    type: 'streamlit:set_widget_value',
-                    key: 'gps_lon',
-                    value: lon.toString()
-                }, '*');
-                document.getElementById("status").innerHTML = "✅ ดึงพิกัดสำเร็จ";
-            }
-            function showError(error) {
-                var status = document.getElementById("status");
-                status.innerHTML = "❌ ไม่สามารถดึงพิกัดได้ (กรุณาเปิด GPS)";
-            }
-        </script>
-        """
+        with st.form("report_form", clear_on_submit=True):
+            st.info("กรอกข้อมูลแจ้งเหตุ (ช่องที่มี * จำเป็นต้องกรอก)")
+            
+            # --- ส่วนรับข้อมูลทั่วไป ---
+            rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
+            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า", "พกพาอาวุธ", "ลักทรัพย์", "บูลลี่/Cyberbully", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
+            loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
+            det = sanitize_input(st.text_area("รายละเอียด *", placeholder="เล่าเหตุการณ์คร่าวๆ...", max_chars=1000, height=150))
+            img = st.file_uploader("รูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
 
-        # 2. แสดงผลปุ่มดึงพิกัด
-        components.html(geo_html, height=120)
+            st.markdown("---")
+            
+            # --- 📍 ส่วน GPS (แบบเรียบง่ายที่สุด) ---
+            st.markdown("**ตำแหน่งปัจจุบัน (GPS)**")
+            
+            # Script ดึงพิกัด (ทำงานเบื้องหลัง)
+            geo_script = """
+            <script>
+                function getLocation() {
+                    var btn = document.getElementById("gps_btn");
+                    var status = document.getElementById("gps_status");
+                    btn.innerHTML = "⏳ กำลังดึงพิกัด...";
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(success, error);
+                    } else { status.innerHTML = "❌ เครื่องนี้ไม่รองรับ GPS"; }
+                }
+                function success(pos) {
+                    window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: pos.coords.latitude.toString()}, '*');
+                    window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: pos.coords.longitude.toString()}, '*');
+                    document.getElementById("gps_btn").innerHTML = "✅ แนบพิกัดเรียบร้อย";
+                    document.getElementById("gps_btn").style.backgroundColor = "#22c55e"; // สีเขียว
+                }
+                function error(err) {
+                    document.getElementById("gps_btn").innerHTML = "⚠️ หาพิกัดไม่เจอ (ช่างมัน)";
+                }
+            </script>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="gps_btn" onclick="getLocation()" type="button" style="background:#64748b; color:white; border:none; padding:8px 15px; border-radius:5px; cursor:pointer;">
+                    📍 กดเพื่อแนบพิกัด GPS
+                </button>
+                <span id="gps_status" style="font-size: 14px; color: #666;"></span>
+            </div>
+            """
+            components.html(geo_script, height=50)
 
-       # 3. ตัวรับค่าพิกัด (ซ่อนไว้ แต่ต้องมีเพื่อให้ JS ส่งค่ากลับมาได้)
-        st.text_input("lat_val", key="gps_lat", label_visibility="hidden")
-        st.text_input("lon_val", key="gps_lon", label_visibility="hidden")
-
-        st.markdown("""
+            # --- ซ่อนกล่องรับค่า (Invisible Inputs) ---
+            # เราใช้เทคนิค CSS ซ่อน input ที่มี key เป็น gps_lat/lon ไม่ให้เด็กรำคาญตา
+            st.text_input("hidden_lat", key="gps_lat", label_visibility="collapsed")
+            st.text_input("hidden_lon", key="gps_lon", label_visibility="collapsed")
+            
+            st.markdown("""
             <style>
-                div[data-testid="stTextInput"]:has(input[aria-label="lat_val"]),
-                div[data-testid="stTextInput"]:has(input[aria-label="lon_val"]) {
+                /* ซ่อนกล่องข้อความที่มี aria-label ขึ้นต้นด้วย hidden_ */
+                div[data-testid="stTextInput"] input[aria-label="hidden_lat"],
+                div[data-testid="stTextInput"] input[aria-label="hidden_lon"] {
                     display: none;
                 }
+                /* ซ่อนกรอบของ input ด้วย (เพื่อให้หายไปจริงๆ) */
+                div[data-testid="stTextInput"]:has(input[aria-label="hidden_lat"]),
+                div[data-testid="stTextInput"]:has(input[aria-label="hidden_lon"]) {
+                    display: none !important;
+                    height: 0px;
+                    margin: 0px;
+                }
             </style>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+            # ----------------------------------------
 
-        # 4. เข้าสู่ฟอร์มแจ้งเหตุ
-        with st.form("report_form", clear_on_submit=True):
-            rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
-            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มผิดกฎหมาย", "พกพาอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "บูลลี่/ข่มขู่/ด่าทอบนโลกออนไลน์", "ล่วงละเมิด/คุกคามทางเพศ", "ความรุนแรงในครอบครัว", "อื่นๆ"])
-            loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ระบุรายละเอียด...", max_chars=1000))
-            img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
+            pdpa_check = st.checkbox("ยืนยันข้อมูลถูกต้องและยินยอมให้โรงเรียนตรวจสอบ")
             
-            st.markdown("---")
-            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้เก็บและใช้ข้อมูลเพื่อกระบวนการทำงานของโรงเรียนโพนทองพัฒนาวิทยา")
-            
-            submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
+            # ปุ่มส่งใหญ่ๆ
+            submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # ✅ จุดที่แก้ไข: ดึงค่าจาก Session State โดยตรง เพื่อความชัวร์ 100%
+                # ดึงค่าจาก Session State (ที่ถูกซ่อนไว้)
                 current_lat = st.session_state.get("gps_lat", "")
                 current_lon = st.session_state.get("gps_lon", "")
-                if 'last_submit_time' in st.session_state:
-                    if (datetime.now() - st.session_state.last_submit_time).total_seconds() < 30:
-                        st.warning("⚠️ กรุณารอ 30 วินาทีก่อนแจ้งเหตุครั้งถัดไป")
-                        st.stop()
 
-                if len(det) < 10: 
-                    st.error("⚠️ รายละเอียดสั้นเกินไป")
+                if len(det) < 5: 
+                    st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
                 elif not pdpa_check: 
-                    st.warning("⚠️ กรุณายืนยัน PDPA")
+                    st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
                 elif rep and loc and det:
                     rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     img_p = process_image(img) if img else ""
                     
-                    status_placeholder = st.empty()
-                    status_placeholder.info("⏳ กำลังบันทึกข้อมูล...")
-
-                    # บันทึกลง Sheet
                     try:
                         target_sheet = get_target_sheet_name()
                         df_current = conn.read(worksheet=target_sheet, ttl=0)
@@ -433,23 +429,24 @@ def main_page():
                             "Report_ID": rid, 
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": current_lat, # ✅ ใส่ตัวแปรที่ดึงจาก session_state
-                            "lon": current_lon  # ✅ ใส่ตัวแปรที่ดึงจาก session_state
+                            "lat": current_lat, # บันทึกค่าที่ซ่อนอยู่
+                            "lon": current_lon  # บันทึกค่าที่ซ่อนอยู่
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
                         conn.update(worksheet=target_sheet, data=combined_df)
                         
-                        st.session_state.last_submit_time = datetime.now()
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"ระบบบันทึกไม่สำเร็จ: {e}")
+
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
-        code = st.text_input("เลข 4 ตัวท้าย", max_chars=4)
-        if st.button("🔎 ค้นหา", use_container_width=True):
+        c_code, c_btn = st.columns([3,1])
+        code = c_code.text_input("เลข 4 ตัวท้ายของรหัสแจ้งเหตุ", max_chars=4, label_visibility="collapsed", placeholder="เช่น 1234")
+        if c_btn.button("ค้นหา", use_container_width=True):
             if len(code) == 4 and code.isdigit():
                 try:
                     df = conn.read(worksheet=get_target_sheet_name(), ttl=0).fillna("")
@@ -458,17 +455,16 @@ def main_page():
                     match = df[df['Report_ID'].str.endswith(code)]
                     if not match.empty:
                         for _, r in match.iterrows():
-                            with st.container(border=True):
-                                st.markdown(f"#### 📌 {r['Report_ID']}")
-                                st.info(f"สถานะ: {r['Status']}")
+                            st.success(f"รหัส: {r['Report_ID']}")
+                            st.info(f"สถานะ: {r['Status']}")
                     else: st.warning("ไม่พบข้อมูล")
                 except: st.error("Connection Error")
-            else: st.error("กรอกเลข 4 หลัก")
+            else: st.toast("กรอกเลข 4 ตัวท้ายให้ถูกต้อง")
 
     st.markdown("---")
-    with st.expander("🔐 สำหรับเจ้าหน้าที่"):
+    with st.expander("🔐 สำหรับเจ้าหน้าที่ (Login)"):
         pw = st.text_input("รหัสผ่าน", type="password")
-        if st.button("Login"):
+        if st.button("เข้าสู่ระบบ"):
             accs = st.secrets.get("officer_accounts", {})
             if pw in accs:
                 st.session_state.current_user = accs[pw]; st.rerun()
