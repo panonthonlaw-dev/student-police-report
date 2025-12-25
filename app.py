@@ -329,10 +329,15 @@ def main_page():
     
     with tab1:
         with st.form("report_form", clear_on_submit=True):
-            rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *"))
+            # ✅ แก้ไข 1: เพิ่ม max_chars=100 ที่ช่องชื่อผู้แจ้ง
+            rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
+            
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า/เครื่องดื่มผิดกฎหมาย", "พกพาอาวุธ", "ลักทรัพย์/ทำลายทรัพย์สิน", "บูลลี่/ข่มขู่/ด่าทอบนโลกออนไลน์", "ล่วงละเมิด/คุกคามทางเพศ", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ระบุรายละเอียด..."))
+            
+            # ✅ แก้ไข 2: เพิ่ม max_chars=1000 ที่ช่องรายละเอียด
+            det = sanitize_input(st.text_area("รายละเอียดเหตุการณ์ *", placeholder="ระบุรายละเอียด...", max_chars=1000))
+            
             img = st.file_uploader("แนบรูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
             
             # --- คำเตือนแจ้งเท็จ (คืนค่ากลับมาแล้ว) ---
@@ -345,7 +350,6 @@ def main_page():
             """, unsafe_allow_html=True)
             
             submitted = st.form_submit_button("ส่งข้อมูลแจ้งเหตุ", use_container_width=True)
-            
             if submitted:
                 # 1. ตรวจสอบการ Spam (ป้องกันกดรัวๆ)
                 if 'last_submit_time' in st.session_state:
