@@ -338,7 +338,7 @@ def main_page():
         if 'gps_lat' not in st.session_state: st.session_state.gps_lat = ""
         if 'gps_lon' not in st.session_state: st.session_state.gps_lon = ""
 
-        # 2. Script JavaScript (ปรับปรุงให้รองรับมือถือ Android/iOS ดีขึ้น)
+        # 2. Script JavaScript
         geo_script = """
         <script>
             var options = {
@@ -361,7 +361,6 @@ def main_page():
 
             function success(pos) {
                 var crd = pos.coords;
-                // ส่งค่ากลับไปที่ Streamlit
                 window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: crd.latitude.toString()}, '*');
                 window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: crd.longitude.toString()}, '*');
                 
@@ -383,12 +382,12 @@ def main_page():
         """
         components.html(geo_script, height=60)
 
-        # 3. ตัวรับค่า (แสดงผลให้เห็นชัดๆ ว่าค่ามาหรือไม่)
-        # ถ้าค่ามา: คุณจะเห็นตัวเลขทศนิยมยาวๆ ในช่องนี้
-        # ถ้าค่าไม่มา: ช่องนี้จะว่างเปล่า (แสดงว่าเป็นที่มือถือ/เน็ต)
+        # 3. ตัวรับค่า (แก้ไขจุดที่ Error แล้ว)
+        # ❌ ของเดิม: st.session_state.gps_lat = c_gps1.text_input(...)  <-- ผิด
+        # ✅ ของใหม่: c_gps1.text_input(...) <-- ถูกต้อง
         c_gps1, c_gps2 = st.columns(2)
-        st.session_state.gps_lat = c_gps1.text_input("ละติจูด (Latitude)", key="gps_lat", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
-        st.session_state.gps_lon = c_gps2.text_input("ลองจิจูด (Longitude)", key="gps_lon", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
+        c_gps1.text_input("ละติจูด (Latitude)", key="gps_lat", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
+        c_gps2.text_input("ลองจิจูด (Longitude)", key="gps_lon", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
         
         st.markdown("---")
 
@@ -409,13 +408,12 @@ def main_page():
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # 🛠️ ดึงค่าจากตัวแปรตรงๆ (ไม่ต้องพึ่ง session state ก็ได้ เพราะเรา bind key ไว้แล้ว)
-                # แต่เพื่อความชัวร์ ดึงจาก session state ที่อัปเดตล่าสุด
-                current_lat = st.session_state.get('gps_lat', '')
-                current_lon = st.session_state.get('gps_lon', '')
+                # ดึงค่าจาก Session State โดยตรง
+                current_lat = st.session_state.gps_lat
+                current_lon = st.session_state.gps_lon
 
                 # ⚠️ Debug: ถ้าพิกัดยังว่าง ให้ลองเตือน
-                if current_lat == "" or current_lon == "":
+                if not current_lat or not current_lon:
                     st.warning("⚠️ ไม่พบพิกัด GPS! (ระบบจะบันทึกโดยไม่มีพิกัด)")
 
                 if len(det) < 5: 
