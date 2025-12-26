@@ -330,87 +330,93 @@ def main_page():
     
     with tab1:
         # ==========================================
-        # 🟢 ส่วนที่แก้ไข: ย้ายตัวรับค่า GPS มาไว้ "นอกฟอร์ม"
+        # 🟢 ส่วน GPS: ย้ายมาไว้นอกฟอร์ม และเปิดให้เห็นค่า (เพื่อ Debug)
         # ==========================================
+        st.info("ขั้นตอนที่ 1: กดปุ่มสีน้ำเงินเพื่อดึงพิกัด GPS ก่อนกรอกข้อมูล")
         
-        # 1. สร้างตัวรับค่า (Hidden Inputs) ไว้นอก Form เพื่อให้รับค่าจาก JS ได้ทันที
-        # ใช้ key เดิมคือ gps_lat, gps_lon
-        st.text_input("hidden_lat", key="gps_lat", label_visibility="collapsed")
-        st.text_input("hidden_lon", key="gps_lon", label_visibility="collapsed")
+        # 1. เตรียมตัวแปรใน Session State ให้พร้อม
+        if 'gps_lat' not in st.session_state: st.session_state.gps_lat = ""
+        if 'gps_lon' not in st.session_state: st.session_state.gps_lon = ""
 
-        # 2. ซ่อนกล่องรับค่าด้วย CSS (วางไว้นอก Form เช่นกัน)
-        st.markdown("""
-        <style>
-            /* ซ่อนกล่องข้อความที่มี key เป็น gps_lat และ gps_lon */
-            div[data-testid="stTextInput"] input[aria-label="hidden_lat"],
-            div[data-testid="stTextInput"] input[aria-label="hidden_lon"] {
-                display: none;
+        # 2. Script JavaScript (ปรับปรุงให้รองรับมือถือ Android/iOS ดีขึ้น)
+        geo_script = """
+        <script>
+            var options = {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0
+            };
+
+            function getLocation() {
+                var btn = document.getElementById("gps_btn");
+                btn.innerHTML = "⏳ กำลังค้นหาดาวเทียม...";
+                btn.disabled = true;
+                
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(success, error, options);
+                } else { 
+                    btn.innerHTML = "❌ เครื่องนี้ไม่รองรับ GPS";
+                }
             }
-            div[data-testid="stTextInput"]:has(input[aria-label="hidden_lat"]),
-            div[data-testid="stTextInput"]:has(input[aria-label="hidden_lon"]) {
-                display: none !important;
-                height: 0px;
-                margin: 0px;
+
+            function success(pos) {
+                var crd = pos.coords;
+                // ส่งค่ากลับไปที่ Streamlit
+                window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: crd.latitude.toString()}, '*');
+                window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: crd.longitude.toString()}, '*');
+                
+                var btn = document.getElementById("gps_btn");
+                btn.innerHTML = "✅ ได้พิกัดแล้ว! (กรอกข้อมูลต่อได้เลย)";
+                btn.style.backgroundColor = "#22c55e"; 
             }
-        </style>
-        """, unsafe_allow_html=True)
+
+            function error(err) {
+                var btn = document.getElementById("gps_btn");
+                btn.innerHTML = "⚠️ ดึงพิกัดไม่ได้ (กรุณาพิมพ์เอง)";
+                btn.style.backgroundColor = "#ef4444";
+                console.warn('ERROR(' + err.code + '): ' + err.message);
+            }
+        </script>
+        <button id="gps_btn" onclick="getLocation()" type="button" style="width:100%; background:#1E3A8A; color:white; border:none; padding:12px; border-radius:8px; font-size:16px; cursor:pointer; margin-bottom:10px;">
+            🛰️ กดปุ่มนี้เพื่อดึงพิกัด GPS
+        </button>
+        """
+        components.html(geo_script, height=60)
+
+        # 3. ตัวรับค่า (แสดงผลให้เห็นชัดๆ ว่าค่ามาหรือไม่)
+        # ถ้าค่ามา: คุณจะเห็นตัวเลขทศนิยมยาวๆ ในช่องนี้
+        # ถ้าค่าไม่มา: ช่องนี้จะว่างเปล่า (แสดงว่าเป็นที่มือถือ/เน็ต)
+        c_gps1, c_gps2 = st.columns(2)
+        st.session_state.gps_lat = c_gps1.text_input("ละติจูด (Latitude)", key="gps_lat", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
+        st.session_state.gps_lon = c_gps2.text_input("ลองจิจูด (Longitude)", key="gps_lon", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
+        
+        st.markdown("---")
+
         # ==========================================
-
+        # 🟢 ส่วนฟอร์มรับข้อมูล
+        # ==========================================
         with st.form("report_form", clear_on_submit=True):
-            st.info("กรอกข้อมูลแจ้งเหตุ (ช่องที่มี * จำเป็นต้องกรอก)")
+            st.write("**ขั้นตอนที่ 2: กรอกรายละเอียดเหตุการณ์**")
             
-            # --- ส่วนรับข้อมูลทั่วไป ---
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า", "พกพาอาวุธ", "ลักทรัพย์", "บูลลี่/Cyberbully", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
-            det = sanitize_input(st.text_area("รายละเอียด *", placeholder="เล่าเหตุการณ์คร่าวๆ...", max_chars=1000, height=150))
-            img = st.file_uploader("รูปภาพประกอบ (ถ้ามี)", type=['jpg','png'])
-
-            st.markdown("---")
-            
-            # --- 📍 ส่วนปุ่มกด GPS (ไว้ในฟอร์มได้ แต่สคริปต์จะส่งค่าไปตัวรับข้างบน) ---
-            st.markdown("**ตำแหน่งปัจจุบัน (GPS)**")
-            
-            geo_script = """
-            <script>
-                function getLocation() {
-                    var btn = document.getElementById("gps_btn");
-                    var status = document.getElementById("gps_status");
-                    btn.innerHTML = "⏳ กำลังดึงพิกัด...";
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(success, error);
-                    } else { status.innerHTML = "❌ เครื่องนี้ไม่รองรับ GPS"; }
-                }
-                function success(pos) {
-                    // ส่งค่าไปที่ตัวแปร Streamlit (ซึ่งตอนนี้อยู่นอกฟอร์มแล้ว)
-                    window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: pos.coords.latitude.toString()}, '*');
-                    window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: pos.coords.longitude.toString()}, '*');
-                    
-                    document.getElementById("gps_btn").innerHTML = "✅ แนบพิกัดเรียบร้อย";
-                    document.getElementById("gps_btn").style.backgroundColor = "#22c55e"; 
-                    document.getElementById("gps_status").innerHTML = " (บันทึกอัตโนมัติ)";
-                }
-                function error(err) {
-                    document.getElementById("gps_btn").innerHTML = "⚠️ หาพิกัดไม่เจอ";
-                }
-            </script>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <button id="gps_btn" onclick="getLocation()" type="button" style="background:#64748b; color:white; border:none; padding:8px 15px; border-radius:5px; cursor:pointer;">
-                    📍 กดเพื่อแนบพิกัด GPS
-                </button>
-                <span id="gps_status" style="font-size: 14px; color: #666;"></span>
-            </div>
-            """
-            components.html(geo_script, height=50)
+            det = sanitize_input(st.text_area("รายละเอียด *", placeholder="เล่าเหตุการณ์...", max_chars=1000))
+            img = st.file_uploader("รูปภาพประกอบ", type=['jpg','png'])
 
             pdpa_check = st.checkbox("ยืนยันข้อมูลถูกต้องและยินยอมให้โรงเรียนตรวจสอบ")
             
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # ดึงค่าจาก Session State (ที่อยู่นอกฟอร์ม)
-                current_lat = st.session_state.get("gps_lat", "")
-                current_lon = st.session_state.get("gps_lon", "")
+                # 🛠️ ดึงค่าจากตัวแปรตรงๆ (ไม่ต้องพึ่ง session state ก็ได้ เพราะเรา bind key ไว้แล้ว)
+                # แต่เพื่อความชัวร์ ดึงจาก session state ที่อัปเดตล่าสุด
+                current_lat = st.session_state.get('gps_lat', '')
+                current_lon = st.session_state.get('gps_lon', '')
+
+                # ⚠️ Debug: ถ้าพิกัดยังว่าง ให้ลองเตือน
+                if current_lat == "" or current_lon == "":
+                    st.warning("⚠️ ไม่พบพิกัด GPS! (ระบบจะบันทึกโดยไม่มีพิกัด)")
 
                 if len(det) < 5: 
                     st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
@@ -434,12 +440,16 @@ def main_page():
                             "Report_ID": rid, 
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": current_lat, # ✅ ค่านี้จะมาแล้วเพราะตัวรับอยู่นอกฟอร์ม
-                            "lon": current_lon
+                            "lat": current_lat, # บันทึก
+                            "lon": current_lon  # บันทึก
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
                         conn.update(worksheet=target_sheet, data=combined_df)
+                        
+                        # เคลียร์ค่า GPS หลังบันทึกเสร็จ
+                        st.session_state.gps_lat = ""
+                        st.session_state.gps_lon = ""
                         
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
