@@ -474,7 +474,6 @@ def main_page():
             if pw in accs:
                 st.session_state.current_user = accs[pw]; st.rerun()
             else: st.error("รหัสผิด")
-
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
 if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
