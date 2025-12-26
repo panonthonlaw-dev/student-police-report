@@ -330,72 +330,25 @@ def main_page():
     
     with tab1:
         # ==========================================
-        # 🟢 ส่วน GPS: ย้ายมาไว้นอกฟอร์ม และเปิดให้เห็นค่า (เพื่อ Debug)
+        # 🔒 ปิดระบบ GPS ชั่วคราว (ซ่อนปุ่มและสคริปต์)
         # ==========================================
-        st.info("ขั้นตอนที่ 1: กดปุ่มสีน้ำเงินเพื่อดึงพิกัด GPS ก่อนกรอกข้อมูล")
+        # if 'gps_lat' not in st.session_state: st.session_state.gps_lat = ""
+        # if 'gps_lon' not in st.session_state: st.session_state.gps_lon = ""
         
-        # 1. เตรียมตัวแปรใน Session State ให้พร้อม
-        if 'gps_lat' not in st.session_state: st.session_state.gps_lat = ""
-        if 'gps_lon' not in st.session_state: st.session_state.gps_lon = ""
-
-        # 2. Script JavaScript
-        geo_script = """
-        <script>
-            var options = {
-                enableHighAccuracy: true,
-                timeout: 5000,
-                maximumAge: 0
-            };
-
-            function getLocation() {
-                var btn = document.getElementById("gps_btn");
-                btn.innerHTML = "⏳ กำลังค้นหาดาวเทียม...";
-                btn.disabled = true;
-                
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(success, error, options);
-                } else { 
-                    btn.innerHTML = "❌ เครื่องนี้ไม่รองรับ GPS";
-                }
-            }
-
-            function success(pos) {
-                var crd = pos.coords;
-                // ส่งค่ากลับไปที่ Streamlit
-                window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: crd.latitude.toString()}, '*');
-                window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: crd.longitude.toString()}, '*');
-                
-                var btn = document.getElementById("gps_btn");
-                btn.innerHTML = "✅ ได้พิกัดแล้ว! (กรอกข้อมูลต่อได้เลย)";
-                btn.style.backgroundColor = "#22c55e"; 
-            }
-
-            function error(err) {
-                var btn = document.getElementById("gps_btn");
-                btn.innerHTML = "⚠️ ดึงพิกัดไม่ได้ (กรุณาพิมพ์เอง)";
-                btn.style.backgroundColor = "#ef4444";
-                console.warn('ERROR(' + err.code + '): ' + err.message);
-            }
-        </script>
-        <button id="gps_btn" onclick="getLocation()" type="button" style="width:100%; background:#1E3A8A; color:white; border:none; padding:12px; border-radius:8px; font-size:16px; cursor:pointer; margin-bottom:10px;">
-            🛰️ กดปุ่มนี้เพื่อดึงพิกัด GPS
-        </button>
-        """
-        components.html(geo_script, height=60)
-
-        # 3. ตัวรับค่า (แก้ไขจุดที่ Error แล้ว)
-        # ✅ แค่สร้าง widget พร้อม key ก็พอ ไม่ต้องกำหนดค่ากลับไปที่ st.session_state
-        c_gps1, c_gps2 = st.columns(2)
-        c_gps1.text_input("ละติจูด (Latitude)", key="gps_lat", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
-        c_gps2.text_input("ลองจิจูด (Longitude)", key="gps_lon", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
+        # (Comment ส่วนปุ่มและ Script ออกทั้งหมด)
+        # geo_script = """ ... """
+        # components.html(geo_script, height=60)
         
-        st.markdown("---")
+        # (Comment ส่วนรับค่าออก)
+        # c_gps1, c_gps2 = st.columns(2)
+        # c_gps1.text_input("...", key="gps_lat")
+        # c_gps2.text_input("...", key="gps_lon")
+        
+        # st.markdown("---") 
+        # ==========================================
 
-        # ==========================================
-        # 🟢 ส่วนฟอร์มรับข้อมูล
-        # ==========================================
         with st.form("report_form", clear_on_submit=True):
-            st.write("**ขั้นตอนที่ 2: กรอกรายละเอียดเหตุการณ์**")
+            st.info("กรอกข้อมูลแจ้งเหตุ (ช่องที่มี * จำเป็นต้องกรอก)")
             
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
             typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า", "พกพาอาวุธ", "ลักทรัพย์", "บูลลี่/Cyberbully", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
@@ -408,13 +361,9 @@ def main_page():
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # ดึงค่าจาก Session State โดยตรง (ค่าจะอัปเดตอัตโนมัติเพราะ key ตรงกัน)
-                current_lat = st.session_state.gps_lat
-                current_lon = st.session_state.gps_lon
-
-                # ⚠️ Debug: ถ้าพิกัดยังว่าง ให้ลองเตือน
-                if not current_lat or not current_lon:
-                    st.warning("⚠️ ไม่พบพิกัด GPS! (ระบบจะบันทึกโดยไม่มีพิกัด)")
+                # กำหนดค่าพิกัดเป็นว่างเปล่าไปก่อน
+                current_lat = "" 
+                current_lon = ""
 
                 if len(det) < 5: 
                     st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
@@ -438,27 +387,23 @@ def main_page():
                             "Report_ID": rid, 
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": current_lat, # บันทึก
-                            "lon": current_lon  # บันทึก
+                            "lat": current_lat, # ส่งค่าว่าง
+                            "lon": current_lon  # ส่งค่าว่าง
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
                         conn.update(worksheet=target_sheet, data=combined_df)
                         
-                        # เคลียร์ค่า GPS หลังบันทึกเสร็จ
-                        st.session_state.gps_lat = ""
-                        st.session_state.gps_lon = ""
-                        
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
                         st.rerun()
                     except Exception as e:
-                        st.error(f"ระบบบันทึกไม่สำเร็จ: {e}")
+                        st.error(f"บันทึกไม่สำเร็จ: {e}")
 
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
         c_code, c_btn = st.columns([3,1])
-        code = c_code.text_input("เลข 4 ตัวท้ายของรหัสแจ้งเหตุ", max_chars=4, label_visibility="collapsed", placeholder="เช่น 1234")
+        code = c_code.text_input("เลข 4 ตัวท้าย", max_chars=4, label_visibility="collapsed")
         if c_btn.button("ค้นหา", use_container_width=True):
             if len(code) == 4 and code.isdigit():
                 try:
@@ -472,16 +417,14 @@ def main_page():
                             st.info(f"สถานะ: {r['Status']}")
                     else: st.warning("ไม่พบข้อมูล")
                 except: st.error("Connection Error")
-            else: st.toast("กรอกเลข 4 ตัวท้ายให้ถูกต้อง")
 
     st.markdown("---")
-    with st.expander("🔐 สำหรับเจ้าหน้าที่ (Login)"):
+    with st.expander("🔐 สำหรับเจ้าหน้าที่"):
         pw = st.text_input("รหัสผ่าน", type="password")
         if st.button("เข้าสู่ระบบ"):
             accs = st.secrets.get("officer_accounts", {})
             if pw in accs:
                 st.session_state.current_user = accs[pw]; st.rerun()
-            else: st.error("รหัสผิด")
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
 if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
