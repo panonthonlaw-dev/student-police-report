@@ -361,6 +361,7 @@ def main_page():
 
             function success(pos) {
                 var crd = pos.coords;
+                // ส่งค่ากลับไปที่ Streamlit
                 window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lat', value: crd.latitude.toString()}, '*');
                 window.parent.postMessage({type: 'streamlit:set_widget_value', key: 'gps_lon', value: crd.longitude.toString()}, '*');
                 
@@ -383,8 +384,7 @@ def main_page():
         components.html(geo_script, height=60)
 
         # 3. ตัวรับค่า (แก้ไขจุดที่ Error แล้ว)
-        # ❌ ของเดิม: st.session_state.gps_lat = c_gps1.text_input(...)  <-- ผิด
-        # ✅ ของใหม่: c_gps1.text_input(...) <-- ถูกต้อง
+        # ✅ แค่สร้าง widget พร้อม key ก็พอ ไม่ต้องกำหนดค่ากลับไปที่ st.session_state
         c_gps1, c_gps2 = st.columns(2)
         c_gps1.text_input("ละติจูด (Latitude)", key="gps_lat", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
         c_gps2.text_input("ลองจิจูด (Longitude)", key="gps_lon", help="ตัวเลขจะขึ้นเองเมื่อกดปุ่ม GPS")
@@ -408,7 +408,7 @@ def main_page():
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # ดึงค่าจาก Session State โดยตรง
+                # ดึงค่าจาก Session State โดยตรง (ค่าจะอัปเดตอัตโนมัติเพราะ key ตรงกัน)
                 current_lat = st.session_state.gps_lat
                 current_lon = st.session_state.gps_lon
 
