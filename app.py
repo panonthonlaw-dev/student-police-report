@@ -194,7 +194,7 @@ def officer_dashboard():
         st.markdown(f"<div style='font-size: 26px; font-weight: bold; color: #1E3A8A; padding-top: 20px;'>🏢 ระบบสอบสวน คุณ{user['name']}</div>", unsafe_allow_html=True)
     with col_h3: 
         st.write(""); 
-        if st.button("🔴 Logout", use_container_width=True): st.session_state.current_user = None; st.rerun()
+        #if st.button("🔴 Logout", use_container_width=True): st.session_state.current_user = None; st.rerun()
 
     try:
         target_sheet = get_target_sheet_name()
@@ -435,13 +435,13 @@ def main_page():
                     else: st.warning("ไม่พบข้อมูล")
                 except: st.error("Connection Error")
 
-    st.markdown("---")
-    with st.expander("🔐 สำหรับเจ้าหน้าที่"):
-        pw = st.text_input("รหัสผ่าน", type="password")
-        if st.button("เข้าสู่ระบบ"):
-            accs = st.secrets.get("officer_accounts", {})
-            if pw in accs:
-                st.session_state.current_user = accs[pw]; st.rerun()
+    #st.markdown("---")
+    #with st.expander("🔐 สำหรับเจ้าหน้าที่"):
+        #pw = st.text_input("รหัสผ่าน", type="password")
+        #if st.button("เข้าสู่ระบบ"):
+            #accs = st.secrets.get("officer_accounts", {})
+            #if pw in accs:
+                #st.session_state.current_user = accs[pw]; st.rerun()
 # --- Run ---
 if 'current_user' not in st.session_state: st.session_state.current_user = None
 if 'view_mode' not in st.session_state: st.session_state.view_mode = "list"
