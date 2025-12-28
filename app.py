@@ -18,7 +18,7 @@ from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
 import streamlit.components.v1 as components # <--- ✅ เพิ่มบรรทัดนี้
 import requests
-GAS_APP_URL = "https://script.google.com/macros/s/AKfycbxqJs3SngCjldebA-xmrHAOUap0-DqIzpITcPqs2mLuV0jnBTSHWlDCv18ssEivjOk/exec"
+GAS_APP_URL = "https://script.google.com/macros/s/AKfycbzIKZM9T856HB9Y16F-yPrzu6VumTGf8ZUztBy8j83JRbipsGfCqNbRe5Itw-gyv34/exec"
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
