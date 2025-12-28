@@ -395,6 +395,7 @@ def main_page():
                 current_lat = coords["lat"]
                 current_lon = coords["lon"]
                 # -------------------------------------------------------
+                current_trace = get_security_trace()
 
                 if len(det) < 5: 
                     st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
