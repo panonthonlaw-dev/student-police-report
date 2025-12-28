@@ -66,22 +66,25 @@ def get_base64_image(image_path):
     except: return ""
 
 def process_image(img_file):
-    if img_file is None: return ""
+    if not img_file: return ""
     try:
-        img = Image.open(img_file)
-        if img.mode in ('RGBA', 'LA', 'P'): img = img.convert('RGB')
+        # เปิดรูปภาพ
+        img = Image.open(img_file).convert('RGB')
         
-        # ลดขนาดภาพลงเหลือ 450px เพื่อให้ไม่เกินโควต้า Google Sheet
-        img.thumbnail((450, 450)) 
+        # ✅ 1. เพิ่มความละเอียดจาก 800 เป็น 1600 (เหมาะสำหรับพิมพ์เอกสาร)
+        # 1600px จะให้รายละเอียดที่คมชัดมากแม้จะขยายภาพใน PDF
+        img.thumbnail((1600, 1600))
         
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=40, optimize=True)
-        base64_str = base64.b64encode(buffer.getvalue()).decode()
+        buf = io.BytesIO()
         
-        # Safety Guard
-        if len(base64_str) > 49500: return "" 
-        return base64_str
-    except: return ""
+        # ✅ 2. เพิ่มคุณภาพการบันทึกจาก 65 เป็น 90
+        # ค่า 90 คือระดับที่ตาแยกไม่ออกกับภาพต้นฉบับ แต่ไฟล์ยังไม่ใหญ่จนเกินไป
+        img.save(buf, format="JPEG", quality=90, optimize=True)
+        
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return ""
 
 # --- Logo Loading ---
 LOGO_PATH = None
