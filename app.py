@@ -20,8 +20,8 @@ import streamlit.components.v1 as components
 from supabase import create_client
 
 # ดึงค่าจาก .streamlit/secrets.toml
-URL = st.secrets["https://vrapvwvhlcapcpahasjx.supabase.co"]
-KEY = st.secrets["sb_publishable_-YGK3ekrIXqCWCv7Mb7zwA_nEd2rJwu"]
+URL = st.secrets["SUPABASE_URL"]
+KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(URL, KEY)
 
 def upload_to_supabase(file, file_name):
