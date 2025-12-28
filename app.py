@@ -421,7 +421,7 @@ def main_page():
                             "Audit_Log": f"Created: {get_now_th()}",
                             "lat": current_lat,
                             "lon": current_lon,
-                            "Security_Trace": security_trace
+                            "Security_Trace": current_trace
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
