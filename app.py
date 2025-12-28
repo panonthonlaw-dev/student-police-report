@@ -421,18 +421,26 @@ def main_page():
                         df_current = conn.read(worksheet=target_sheet, ttl=0)
                         
                         new_row = pd.DataFrame([{
-                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
-                            "Reporter": rep, 
-                            "Incident_Type": typ, 
-                            "Location": loc, 
-                            "Details": det, 
-                            "Status": "รอดำเนินการ", 
-                            "Report_ID": rid, 
-                            "Image_Data": img_p, 
-                            "Audit_Log": f"Created: {get_now_th()}",
-                            "lat": current_lat,
-                            "lon": current_lon
-                        }])
+    "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+    "Report_ID": rid, 
+    "reporter_name": rep, 
+    "incident_type": typ, 
+    "location": loc, 
+    "details": det, 
+    "status": "รอดำเนินการ", 
+    "Image_Data": img_p, 
+    "victim_name": "",       # เพิ่มให้ครบ
+    "accused_name": "",      # เพิ่มให้ครบ
+    "Witness": "",           # เพิ่มให้ครบ
+    "Teacher_Investigator": "", 
+    "Student_Police_Investigator": "", 
+    "statement": "", 
+    "evidence_url": "", 
+    "Video_Link": "",
+    "audit_log": f"Created: {get_now_th()}",
+    "lat": current_lat,
+    "lon": current_lon
+}])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
                         conn.update(worksheet=target_sheet, data=combined_df)
