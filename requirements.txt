@@ -10,3 +10,4 @@ Pillow
 reportlab
 weasyprint
 st-gsheets-connection
+supabase
