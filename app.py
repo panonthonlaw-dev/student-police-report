@@ -17,6 +17,7 @@ from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
 import streamlit.components.v1 as components # <--- ✅ เพิ่มบรรทัดนี้
+import requests
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
@@ -108,6 +109,16 @@ def sanitize_input(text):
     safe_text = html.escape(text_str)
     
     return safe_text.strip()
+def get_security_trace():
+    try:
+        # ดึง IP จริง
+        ip = requests.get('https://api.ipify.org?format=json', timeout=5).json()['ip']
+        # ดึงข้อมูล Browser/รุ่นมือถือ
+        ua = st.context.headers.get("User-Agent", "Unknown Device")
+    except:
+        ip = "Unknown IP"
+        ua = "Unknown Device"
+    return f"IP: {ip} | Device: {ua}"
 
 def safe_ensure_columns_for_view(df):
     required_cols = ['Report_ID', 'Timestamp', 'Reporter', 'Incident_Type', 'Location', 'Details', 'Status', 'Image_Data', 'Audit_Log', 'Victim', 'Accused', 'Witness', 'Teacher_Investigator', 'Student_Police_Investigator', 'Statement', 'Evidence_Image', 
@@ -367,7 +378,7 @@ def main_page():
             img = st.file_uploader("รูปภาพประกอบ", type=['jpg','png'])
 
             st.markdown("---")
-            pdpa_check = st.checkbox("ยินยอมให้โรงเรียนนำข้อมูลของท่านไปใช้ในกิจการงานของโรงเรียน")
+            pdpa_check = st.checkbox("ข้าพเจ้ายินยอมให้โรงเรียนเก็บข้อมูลข้างต้น เพื่อใช้ในกิจการความปลอดภัยและงานสืบสวนของโรงเรียนตามนโยบาย PDPA รวมถึงร่องรอยดิจิทัล (IP Address ข้อมูลอุปกรณ์) ")
             
             # =========================================================
             # 🔴🔴 จุดแจ้งเตือน (วางไว้ก่อนปุ่มกด 100%)
@@ -408,7 +419,8 @@ def main_page():
                             "Image_Data": img_p, 
                             "Audit_Log": f"Created: {get_now_th()}",
                             "lat": current_lat,
-                            "lon": current_lon
+                            "lon": current_lon,
+                            "Security_Trace": security_trace
                         }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
