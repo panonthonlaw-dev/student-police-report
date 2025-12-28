@@ -16,7 +16,33 @@ import html
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
-import streamlit.components.v1 as components # <--- ✅ เพิ่มบรรทัดนี้
+import streamlit.components.v1 as components 
+from supabase import create_client
+
+# ดึงค่าจาก .streamlit/secrets.toml
+URL = st.secrets["https://vrapvwvhlcapcpahasjx.supabase.co"]
+KEY = st.secrets["sb_publishable_-YGK3ekrIXqCWCv7Mb7zwA_nEd2rJwu"]
+supabase = create_client(URL, KEY)
+
+def upload_to_supabase(file, file_name):
+    """ฟังก์ชันอัปโหลดรูปไปยัง Storage และคืนค่าเป็น URL"""
+    try:
+        img = Image.open(file)
+        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+        img.thumbnail((800, 800))
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=80)
+        buffer.seek(0)
+        
+        path_on_supa = f"reports/{file_name}"
+        supabase.storage.from_("investigation_images").upload(
+            path=path_on_supa,
+            file=buffer.getvalue(),
+            file_options={"content-type": "image/jpeg", "upsert": "true"}
+        )
+        return supabase.storage.from_("investigation_images").get_public_url(path_on_supa)
+    except Exception as e:
+        return ""
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
