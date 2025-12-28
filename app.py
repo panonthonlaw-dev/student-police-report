@@ -390,37 +390,39 @@ def main_page():
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-            # --- ดึงพิกัดและ Trace ข้อมูล ---
-            coords = COORD_MAP.get(loc, {"lat": 0.0, "lon": 0.0})
-            current_lat = coords["lat"]
-            current_lon = coords["lon"]
-            current_trace = get_security_trace()
+                # 1. ดึงข้อมูลพื้นฐานและร่องรอยดิจิทัล
+                coords = COORD_MAP.get(loc, {"lat": 0.0, "lon": 0.0})
+                current_lat = coords["lat"]
+                current_lon = coords["lon"]
+                current_trace = get_security_trace()
 
-            if len(det) < 5: 
-                st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
-            elif not pdpa_check: 
-                st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
-            elif rep and loc and det:
-                rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                
-                # ✅ 1. เปลี่ยนวิธีจัดการรูปภาพ: อัปโหลดไป Drive แทนการเก็บ Base64
-                img_data_for_sheet = "" # เริ่มต้นด้วยค่าว่าง
-                if img:
-                    with st.spinner("⏳ กำลังประมวลผลและอัปโหลดรูปภาพคุณภาพสูง..."):
-                        # ปรับความชัดรูป (1600px) และรับค่า Base64 มาชั่วคราว
-                        img_b64 = process_image(img) 
-                        if img_b64:
-                            # แปลง Base64 กลับเป็น Bytes เพื่อส่งเข้า Drive
-                            raw_bytes = base64.b64decode(img_b64)
-                            # อัปโหลดไปที่ Drive และรับ "ลิงก์" กลับมา
-                            img_link = upload_to_drive(raw_bytes, f"{rid}_incident.jpg")
-                            if img_link:
-                                img_data_for_sheet = img_link # ใช้ลิงก์แทน Base64
-                
-                try:
-                    target_sheet = get_target_sheet_name()
-                    df_current = conn.read(worksheet=target_sheet, ttl=0)
+                # 2. ตรวจสอบเงื่อนไขการกรอกข้อมูล
+                if len(det) < 5: 
+                    st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
+                elif not pdpa_check: 
+                    st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
+                elif rep and loc and det:
+                    rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+                    
+                    # 3. จัดการรูปภาพ (อัปโหลดไป Drive)
+                    img_data_for_sheet = "" 
+                    if img:
+                        with st.spinner("⏳ กำลังประมวลผลและอัปโหลดรูปภาพ..."):
+                            img_b64 = process_image(img) 
+                            if img_b64:
+                                raw_bytes = base64.b64decode(img_b64)
+                                img_link = upload_to_drive(raw_bytes, f"{rid}_incident.jpg")
+                                if img_link:
+                                    img_data_for_sheet = img_link
+
+                    # 4. ขั้นตอนการบันทึกลง Google Sheets (แบบปลอดภัย)
+                    try:
+                        target_sheet = get_target_sheet_name()
                         
+                        # ดึงข้อมูลล่าสุด (บังคับ ttl=0 เพื่อไม่ให้พลาดข้อมูลใหม่)
+                        df_current = conn.read(worksheet=target_sheet, ttl=0)
+                        
+                        # เตรียมข้อมูลแถวใหม่
                         new_row = pd.DataFrame([{
                             "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
                             "Reporter": rep, 
@@ -429,21 +431,29 @@ def main_page():
                             "Details": det, 
                             "Status": "รอดำเนินการ", 
                             "Report_ID": rid, 
-                            "Image_Data": img_p, 
+                            "Image_Data": img_data_for_sheet,
                             "Audit_Log": f"Created: {get_now_th()}",
                             "lat": current_lat,
                             "lon": current_lon,
-                            "Security_Trace": current_trace
+                            "Security_Trace": current_trace 
                         }])
 
-                        combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
+                        # ✅ ตรวจสอบระบบป้องกัน: ถ้า Sheet เดิมมีข้อมูลแต่ดึงมาไม่ได้ ให้หยุดทำงาน
+                        # วิธีนี้จะป้องกันไม่ให้เอา new_row ไปเขียนทับไฟล์เดิมจนข้อมูลหาย
+                        if df_current is not None:
+                            combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
+                        else:
+                            combined_df = new_row
+
+                        # บันทึกกลับไปยัง Google Sheets
                         conn.update(worksheet=target_sheet, data=combined_df)
                         
                         st.session_state.popup_rid = rid
                         st.session_state.show_popup = True
                         st.rerun()
+
                     except Exception as e:
-                        st.error(f"บันทึกไม่สำเร็จ: {e}")
+                        st.error(f"❌ บันทึกไม่สำเร็จเนื่องจากปัญหาทางเทคนิค: {e}")
 
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
