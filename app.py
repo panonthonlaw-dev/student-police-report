@@ -390,24 +390,36 @@ def main_page():
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-                # --- จุดที่ต้องแก้: ดึงพิกัดจาก COORD_MAP ตามที่เลือกใน loc ---
-                coords = COORD_MAP.get(loc, {"lat": 0.0, "lon": 0.0})
-                current_lat = coords["lat"]
-                current_lon = coords["lon"]
-                # -------------------------------------------------------
-                current_trace = get_security_trace()
+            # --- ดึงพิกัดและ Trace ข้อมูล ---
+            coords = COORD_MAP.get(loc, {"lat": 0.0, "lon": 0.0})
+            current_lat = coords["lat"]
+            current_lon = coords["lon"]
+            current_trace = get_security_trace()
 
-                if len(det) < 5: 
-                    st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
-                elif not pdpa_check: 
-                    st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
-                elif rep and loc and det:
-                    rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                    img_p = process_image(img) if img else ""
-                    
-                    try:
-                        target_sheet = get_target_sheet_name()
-                        df_current = conn.read(worksheet=target_sheet, ttl=0)
+            if len(det) < 5: 
+                st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
+            elif not pdpa_check: 
+                st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
+            elif rep and loc and det:
+                rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+                
+                # ✅ 1. เปลี่ยนวิธีจัดการรูปภาพ: อัปโหลดไป Drive แทนการเก็บ Base64
+                img_data_for_sheet = "" # เริ่มต้นด้วยค่าว่าง
+                if img:
+                    with st.spinner("⏳ กำลังประมวลผลและอัปโหลดรูปภาพคุณภาพสูง..."):
+                        # ปรับความชัดรูป (1600px) และรับค่า Base64 มาชั่วคราว
+                        img_b64 = process_image(img) 
+                        if img_b64:
+                            # แปลง Base64 กลับเป็น Bytes เพื่อส่งเข้า Drive
+                            raw_bytes = base64.b64decode(img_b64)
+                            # อัปโหลดไปที่ Drive และรับ "ลิงก์" กลับมา
+                            img_link = upload_to_drive(raw_bytes, f"{rid}_incident.jpg")
+                            if img_link:
+                                img_data_for_sheet = img_link # ใช้ลิงก์แทน Base64
+                
+                try:
+                    target_sheet = get_target_sheet_name()
+                    df_current = conn.read(worksheet=target_sheet, ttl=0)
                         
                         new_row = pd.DataFrame([{
                             "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
