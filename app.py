@@ -16,33 +16,7 @@ import html
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
-import streamlit.components.v1 as components 
-from supabase import create_client
-
-# ดึงค่าจาก .streamlit/secrets.toml
-URL = st.secrets["SUPABASE_URL"]
-KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(URL, KEY)
-
-def upload_to_supabase(file, file_name):
-    """ฟังก์ชันอัปโหลดรูปไปยัง Storage และคืนค่าเป็น URL"""
-    try:
-        img = Image.open(file)
-        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-        img.thumbnail((800, 800))
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=80)
-        buffer.seek(0)
-        
-        path_on_supa = f"reports/{file_name}"
-        supabase.storage.from_("investigation_images").upload(
-            path=path_on_supa,
-            file=buffer.getvalue(),
-            file_options={"content-type": "image/jpeg", "upsert": "true"}
-        )
-        return supabase.storage.from_("investigation_images").get_public_url(path_on_supa)
-    except Exception as e:
-        return ""
+import streamlit.components.v1 as components # <--- ✅ เพิ่มบรรทัดนี้
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
@@ -421,26 +395,18 @@ def main_page():
                         df_current = conn.read(worksheet=target_sheet, ttl=0)
                         
                         new_row = pd.DataFrame([{
-    "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
-    "Report_ID": rid, 
-    "reporter_name": rep, 
-    "incident_type": typ, 
-    "location": loc, 
-    "details": det, 
-    "status": "รอดำเนินการ", 
-    "Image_Data": img_p, 
-    "victim_name": "",       # เพิ่มให้ครบ
-    "accused_name": "",      # เพิ่มให้ครบ
-    "Witness": "",           # เพิ่มให้ครบ
-    "Teacher_Investigator": "", 
-    "Student_Police_Investigator": "", 
-    "statement": "", 
-    "evidence_url": "", 
-    "Video_Link": "",
-    "audit_log": f"Created: {get_now_th()}",
-    "lat": current_lat,
-    "lon": current_lon
-}])
+                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+                            "Reporter": rep, 
+                            "Incident_Type": typ, 
+                            "Location": loc, 
+                            "Details": det, 
+                            "Status": "รอดำเนินการ", 
+                            "Report_ID": rid, 
+                            "Image_Data": img_p, 
+                            "Audit_Log": f"Created: {get_now_th()}",
+                            "lat": current_lat,
+                            "lon": current_lon
+                        }])
 
                         combined_df = pd.concat([df_current, new_row], ignore_index=True).fillna("")
                         conn.update(worksheet=target_sheet, data=combined_df)
