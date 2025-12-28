@@ -18,6 +18,7 @@ from weasyprint.text.fonts import FontConfiguration
 from PIL import Image
 import streamlit.components.v1 as components # <--- ✅ เพิ่มบรรทัดนี้
 import requests
+GAS_APP_URL = "https://script.google.com/macros/s/AKfycbxqJs3SngCjldebA-xmrHAOUap0-DqIzpITcPqs2mLuV0jnBTSHWlDCv18ssEivjOk/exec"
 # --- 1. ตั้งค่าหน้าจอ ---
 st.set_page_config(page_title="ระบบแจ้งเหตุสถานีตำรวจภูธรโรงเรียนโพนทองพัฒนาวิทยา", page_icon="👮‍♂️", layout="wide")
 
@@ -109,6 +110,19 @@ def sanitize_input(text):
     safe_text = html.escape(text_str)
     
     return safe_text.strip()
+def upload_to_drive(file_bytes, filename):
+    try:
+        b64_data = base64.b64encode(file_bytes).decode()
+        payload = {"filename": filename, "filedata": b64_data}
+        # ส่งรูปไปที่สะพาน GAS
+        response = requests.post(GAS_APP_URL, json=payload, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("status") == "success":
+                return result.get("url") # คืนค่าเป็นลิงก์รูปสั้นๆ
+        return ""
+    except:
+        return ""
 def get_security_trace():
     try:
         # ดึง IP จริง
