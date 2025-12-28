@@ -386,74 +386,72 @@ def main_page():
             st.error("⚠️ **คำเตือน:** การแจ้งความเท็จเพื่อแกล้งผู้อื่นมีความผิดตามกฎหมายอาญา และการแจ้งนี้ไม่ใช่การแจ้งความดำเนินคดีตามกฎหมาย")
             # =========================================================
             
-            # ปุ่มส่ง (Submit Button)
+# ปุ่มส่ง (Submit Button)
             submitted = st.form_submit_button("🚀 ส่งแจ้งเหตุ", type="primary", use_container_width=True)
             
             if submitted:
-            # ... (ส่วนดึงพิกัด และ Security Trace เหมือนเดิม) ...
-            current_trace = get_security_trace()
+                # ✅ ทุกบรรทัดที่อยู่ภายใต้ 'if submitted' ต้องย่อหน้าเข้ามา 1 ระดับเท่ากัน
+                current_trace = get_security_trace()
 
-            if len(det) < 5: 
-                st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
-            elif not pdpa_check: 
-                st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
-            elif rep and loc and det:
-                rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-                
-                # จัดการรูปภาพ (ได้ลิงก์จาก Drive)
-                img_data_for_sheet = "" 
-                if img:
-                    with st.spinner("⏳ กำลังอัปโหลดรูปภาพ..."):
-                        img_b64 = process_image(img) 
-                        if img_b64:
-                            raw_bytes = base64.b64decode(img_b64)
-                            img_data_for_sheet = upload_to_drive(raw_bytes, f"{rid}_incident.jpg")
-
-                try:
-                    target_sheet = get_target_sheet_name()
+                if len(det) < 5: 
+                    st.toast("⚠️ รายละเอียดสั้นเกินไป", icon="⚠️")
+                elif not pdpa_check: 
+                    st.toast("⚠️ กรุณาติ๊กยืนยันข้อมูล", icon="⚠️")
+                elif rep and loc and det:
+                    rid = f"POL-{get_now_th().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
                     
-                    # 🔍 1. ดึงข้อมูลปัจจุบัน (บังคับ ttl=0 เพื่อเอาค่าล่าสุดจริงๆ)
-                    df_current = conn.read(worksheet=target_sheet, ttl=0)
-                    
-                    # 🔍 2. ตรวจสอบความปลอดภัย: ถ้า Sheet ในเน็ตมีข้อมูล แต่ดึงมาได้ 0 แถว 
-                    # ให้หยุดทำงานทันทีเพื่อป้องกันการเขียนทับของเก่า
-                    if df_current is None:
-                        st.error("❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาลองใหม่")
-                        st.stop()
+                    # จัดการรูปภาพ (ได้ลิงก์จาก Drive)
+                    img_data_for_sheet = "" 
+                    if img:
+                        with st.spinner("⏳ กำลังอัปโหลดรูปภาพ..."):
+                            img_b64 = process_image(img) 
+                            if img_b64:
+                                raw_bytes = base64.b64decode(img_b64)
+                                img_data_for_sheet = upload_to_drive(raw_bytes, f"{rid}_incident.jpg")
 
-                    # 3. เตรียมข้อมูลแถวใหม่
-                    new_data = {
-                        "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
-                        "Reporter": rep, 
-                        "Incident_Type": typ, 
-                        "Location": loc, 
-                        "Details": det, 
-                        "Status": "รอดำเนินการ", 
-                        "Report_ID": rid, 
-                        "Image_Data": img_data_for_sheet,
-                        "Audit_Log": f"Created: {get_now_th()}",
-                        "lat": current_lat,
-                        "lon": current_lon,
-                        "Security_Trace": current_trace 
-                    }
-                    new_row = pd.DataFrame([new_data])
+                    try:
+                        target_sheet = get_target_sheet_name()
+                        
+                        # 🔍 1. ดึงข้อมูลปัจจุบัน (บังคับ ttl=0 เพื่อเอาค่าล่าสุดจริงๆ)
+                        df_current = conn.read(worksheet=target_sheet, ttl="0")
+                        
+                        # 🔍 2. ตรวจสอบความปลอดภัย
+                        if df_current is None:
+                            st.error("❌ ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาลองใหม่")
+                            st.stop()
 
-                    # 🔍 4. ต่อข้อมูลแบบมั่นใจ
-                    # ใช้ ignore_index=True เพื่อให้ลำดับแถวรันต่อกันไปเรื่อยๆ
-                    combined_df = pd.concat([df_current, new_row], ignore_index=True)
+                        # 3. เตรียมข้อมูลแถวใหม่
+                        new_data = {
+                            "Timestamp": get_now_th().strftime("%d/%m/%Y %H:%M:%S"), 
+                            "Reporter": rep, 
+                            "Incident_Type": typ, 
+                            "Location": loc, 
+                            "Details": det, 
+                            "Status": "รอดำเนินการ", 
+                            "Report_ID": rid, 
+                            "Image_Data": img_data_for_sheet,
+                            "Audit_Log": f"Created: {get_now_th()}",
+                            "lat": current_lat,
+                            "lon": current_lon,
+                            "Security_Trace": current_trace 
+                        }
+                        new_row = pd.DataFrame([new_data])
 
-                    # 5. ล้างค่า NaN (ค่าว่าง) ให้เป็น String ว่าง เพื่อไม่ให้ Google Sheets งง
-                    combined_df = combined_df.fillna("")
+                        # 🔍 4. ต่อข้อมูลแบบมั่นใจ
+                        combined_df = pd.concat([df_current, new_row], ignore_index=True)
 
-                    # ✅ 6. อัปเดตกลับไปที่ Google Sheets
-                    conn.update(worksheet=target_sheet, data=combined_df)
-                    
-                    st.session_state.popup_rid = rid
-                    st.session_state.show_popup = True
-                    st.rerun()
+                        # 5. ล้างค่า NaN
+                        combined_df = combined_df.fillna("")
 
-                except Exception as e:
-                    st.error(f"❌ ระบบหยุดการบันทึกเพื่อป้องกันข้อมูลหาย: {e}")
+                        # ✅ 6. อัปเดตกลับไปที่ Google Sheets
+                        conn.update(worksheet=target_sheet, data=combined_df)
+                        
+                        st.session_state.popup_rid = rid
+                        st.session_state.show_popup = True
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ ระบบหยุดการบันทึกเพื่อป้องกันข้อมูลหาย: {e}")
     with tab2:
         st.subheader("🔍 ตรวจสอบสถานะ")
         c_code, c_btn = st.columns([3,1])
