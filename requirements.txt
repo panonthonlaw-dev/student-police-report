@@ -11,3 +11,4 @@ reportlab
 weasyprint
 st-gsheets-connection
 supabase
+requests
