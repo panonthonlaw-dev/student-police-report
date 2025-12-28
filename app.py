@@ -114,21 +114,24 @@ def upload_to_drive(file_bytes, filename):
     try:
         b64_data = base64.b64encode(file_bytes).decode()
         payload = {"filename": filename, "filedata": b64_data}
+        
+        # ส่งรูปไปที่สะพาน GAS
         response = requests.post(GAS_APP_URL, json=payload, timeout=30)
         
         if response.status_code == 200:
             result = response.json()
             if result.get("status") == "success":
-                return result.get("url")
+                return result.get("url") # คืนค่าเป็นลิงก์รูป
             else:
-                # 🚩 ถ้า GAS ส่ง Error กลับมา ให้โชว์บนหน้าเว็บเลย
-                st.error(f"GAS Error: {result.get('message')}")
+                # 🚩 จะโชว์ถ้า Google Apps Script ส่ง Error กลับมา
+                st.error(f"❌ GAS Error: {result.get('message')}")
         else:
-            # 🚩 ถ้าเชื่อมต่อไม่ได้ (เช่น URL ผิด หรือไม่ได้ตั้ง Anyone)
-            st.error(f"HTTP Error: {response.status_code}")
+            # 🚩 จะโชว์ถ้าเชื่อมต่อ URL ไม่ได้ (เช่น URL ผิด หรือไม่ได้ตั้งค่า Anyone)
+            st.error(f"❌ Connection Error (HTTP {response.status_code})")
         return ""
     except Exception as e:
-        st.error(f"Upload Connection Error: {e}")
+        # 🚩 จะโชว์ถ้าเกิดปัญหาอื่น ๆ เช่น เน็ตหลุด หรือชื่อตัวแปรผิด
+        st.error(f"❌ Upload System Error: {e}")
         return ""
 def get_security_trace():
     try:
