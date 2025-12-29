@@ -1,14 +1,9 @@
 streamlit
+streamlit-gsheets
 pandas
-gspread
-oauth2client
+Pillow
 requests
 pytz
 qrcode
-plotly
-Pillow
-reportlab
 weasyprint
-st-gsheets-connection
-supabase
-requests
+plotly
