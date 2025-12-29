@@ -389,7 +389,7 @@ def main_page():
         c1, c2, c3 = st.columns([5, 1, 5])
         c2.image(LOGO_PATH, width=100)
     
-    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุโรงเรียนโพนทองฯ</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>👮‍♂️ แจ้งเหตุโรงเรียนโพนทองพัฒนาวิทยา</h1>", unsafe_allow_html=True)
     
     tab1, tab2 = st.tabs(["📝 แจ้งเหตุ", "🔍 ติดตามผล"])
     
