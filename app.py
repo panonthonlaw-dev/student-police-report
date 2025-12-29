@@ -396,7 +396,7 @@ def main_page():
             
             # --- Input Fields ---
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
-            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า", "พกพาอาวุธ", "ลักทรัพย์", "บูลลี่/Cyberbully", "ล่วงละเมิดทางเพศ", "อื่นๆ"])
+            typ = st.selectbox("ประเภทเหตุ", ["ทะเลาะวิวาท/ทำร้ายร่างกาย", "สารเสพติด/บุหรี่ไฟฟ้า", "พกพาอาวุธ", "ลักทรัพย์/ทำลายทรัพย์", "บูลลี่/Cyberbully", "ล่วงละเมิดทางเพศ", "ความรุนแรงในครอบครัว", "อื่นๆ"])
             loc = st.selectbox("สถานที่เกิดเหตุ *", LOCATION_OPTIONS)
             det = sanitize_input(st.text_area("รายละเอียด *", placeholder="เล่าเหตุการณ์...", max_chars=1000))
             img = st.file_uploader("รูปภาพประกอบ", type=['jpg','png'])
