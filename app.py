@@ -396,7 +396,7 @@ def main_page():
     with tab1:
         # เริ่มฟอร์ม
         with st.form("report_form", clear_on_submit=True):
-            st.info("กรอกข้อมูลแจ้งเหตุ (ช่องที่มี * จำเป็นต้องกรอก)")
+            st.info("ข้อมูลของท่านจะถูกเก็บเป็นความลับไม่เปิดเผยต่อคู่กรณี")
             
             # --- Input Fields ---
             rep = sanitize_input(st.text_input("ชื่อผู้แจ้ง *", max_chars=100))
